@@ -13,7 +13,32 @@
 import matplotlib.pyplot as plt
 import numpy as np
 
+###############################################################################
+def plot_sfh_mass_weighted(sfh_mass_weighted):
+    """
+    A handy function for making a nice plot of the SFH.
+    """
+    # Create figure
+    fig, ax = plt.subplots(nrows=1, ncols=1, figsize=(10, 3.5))
+    bbox = ax.get_position()
+    cax = fig.add_axes([bbox.x0 + bbox.width, bbox.x0, 0.025, bbox.height])
+    
+    # Plot the SFH
+    m = ax.imshow(np.log10(sfh_mass_weighted), cmap="magma_r", origin="lower", aspect="auto")
+    fig.colorbar(m, cax=cax)
+    
+    # Decorations
+    ax.set_yticks(range(len(metallicities)))
+    ax.set_yticklabels(["{:.3f}".format(met / 0.02) for met in metallicities])
+    ax.set_ylabel(r"Metallicity ($Z_\odot$)")
+    cax.set_ylabel(r"Mass $\log_{10}(\rm M_\odot)$")
+    ax.set_xticks(range(len(ages)))
+    ax.set_xlabel("Age (Myr)")
+    ax.set_xticklabels(["{:}".format(age / 1e6) for age in ages], rotation="vertical")
+    
+    return
 
+###############################################################################
 def ppxf_plot(pp, ax=None):
     """
     Produces a plot of the pPXF best fit.
