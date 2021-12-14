@@ -14,7 +14,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 
 ###############################################################################
-def plot_sfh_mass_weighted(sfh_mass_weighted):
+def plot_sfh_mass_weighted(sfh_mass_weighted, ages, metallicities):
     """
     A handy function for making a nice plot of the SFH.
     """
