@@ -27,7 +27,29 @@ N_AGES_GENEVA = 46
 N_MET_GENEVA = 5
 
 ###############################################################################
-def create_mock_spectrum(sfh_mass_weighted, isochrones):
+def create_mock_spectrum(sfh_mass_weighted, isochrones, sigma_star_kms, z,
+                         SNR):
+    
+    """
+    Create a mock spectrum given an input star formation history, stellar 
+    velocity dispersion, redshift and SNR.
+
+    Inputs:
+    sfh_mass_weighted       an N x M array of mass weights corresponding to 
+                            the SSP templates, where N = number of metallicity
+                            dimensions and M = number of age dimensions. The 
+                            weights should be in units of solar masses.
+    isochrones              which set of isochrones to use; must be either 
+                            Padova or Geneva 
+    sigma_star_kms          stellar velocity dispersion, in km/s
+    z                       redshift
+    SNR                     Assumed signal-to-noise ratio in the outoput 
+                            spectrum.
+
+    Returns:
+    spec, spec_err          mock spectrum and corresponding 1-sigma errors.
+
+    """
 
     assert isochrones == "Padova" or isochrones == "Geneva",\
         "isochrones must be either Padova or Geneva!"
@@ -103,8 +125,6 @@ def create_mock_spectrum(sfh_mass_weighted, isochrones):
     # Some settings for plotting
     fig_w = 12
     fig_h = 5
-    lambda_1 = 5800
-    lambda_2 = 6100
 
     # 1. Sum the templates by their weights to create a single spectrum
     spec_linear = np.nansum(np.nansum(sfh_mass_weighted[:, :, None] * spec_arr_linear, axis=0), axis=0)
@@ -128,16 +148,6 @@ def create_mock_spectrum(sfh_mass_weighted, isochrones):
         np.array([lambda_vals_ssp_linear[0], lambda_vals_ssp_linear[-1]]),
         spec_linear, velscale=velscale_oversampled)
 
-    # Plot to check
-    fig, ax = plt.subplots(nrows=1, ncols=1, figsize=(fig_w, fig_h))
-    ax.plot(lambda_vals_ssp_linear, spec_linear, color="black", label="Normalised, linear spectrum")
-    ax.plot(np.exp(lambda_vals_ssp_log), spec_log, color="red", label="Normalised, logarithmically-binned spectrum")
-
-    ax.set_ylabel(f"$L$ + offset (normalised)")
-    ax.set_xlabel(f"$\lambda$")
-    ax.legend()
-    ax.autoscale(enable="True", axis="x", tight=True)
-
     ###########################################################################
     # 3a. Create the kernel corresponding to the LOSVD
     delta_lnlambda = np.diff(lambda_vals_ssp_log)[0]
@@ -154,53 +164,20 @@ def create_mock_spectrum(sfh_mass_weighted, isochrones):
     ax.plot(delta_v_vals_kms, kernel_losvd)
     ax.axvline(0, color="black")
     ax.set_xlabel(r"$\Delta v$")
-
-    fig, ax = plt.subplots(nrows=1, ncols=1)
-    ax.plot(delta_lnlambda_vals, kernel_losvd)
-    ax.axvline(0, color="black")
-    ax.set_xlabel(r"$\Delta ln \lambda $")
+    ax.set_title("LOSVD kernel")
 
     ###########################################################################
     # 4. Convolve the LOSVD kernel with the mock spectrum
     spec_log_conv = convolve(spec_log, kernel_losvd, mode="same") / np.nansum(kernel_losvd)
 
-    # Plot to check
-    fig, ax = plt.subplots(nrows=1, ncols=1, figsize=(fig_w, fig_h))
-    ax.plot(np.exp(lambda_vals_ssp_log), spec_log, color="black", label="Before convolution with LOSV")
-    ax.plot(np.exp(lambda_vals_ssp_log), spec_log_conv, color="red", label="After convolution with LOSVD")
-
-    ax.set_ylabel(f"$L$")
-    ax.set_xlabel(f"$\lambda$")
-    ax.legend()
-    ax.autoscale(enable="True", axis="x", tight=True)
-
     ###########################################################################
     # 5. Apply the redshift 
     lambda_vals_ssp_log_redshifted = lambda_vals_ssp_log + np.log(1 + z)
-
-    # Plot to check
-    fig, ax = plt.subplots(nrows=1, ncols=1, figsize=(fig_w, fig_h))
-    ax.plot(np.exp(lambda_vals_ssp_log), spec_log_conv, color="black", label="Before redshifting")
-    ax.plot(np.exp(lambda_vals_ssp_log_redshifted), spec_log_conv, color="red", label="After redshifting")
-        
-    ax.set_ylabel(f"$L$")
-    ax.set_xlabel(f"$\lambda$")
-    ax.legend()
-    ax.autoscale(enable="True", axis="x", tight=True)
 
     ###########################################################################
     # 6. Interpolate to the WiFeS wavelength grid (corresponding to the COMB data cube) using a cubic spline
     cs = CubicSpline(np.exp(lambda_vals_ssp_log_redshifted), spec_log_conv)
     spec_wifes_conv = cs(lambda_vals_wifes_oversampled_A)
-
-    # Plot to check
-    fig, ax = plt.subplots(nrows=1, ncols=1, figsize=(fig_w, fig_h))
-    ax.step(np.exp(lambda_vals_ssp_log_redshifted), spec_log_conv, color="black", label="Before interpolation", where="mid")
-    ax.step(lambda_vals_wifes_oversampled_A, spec_wifes_conv, color="red", label="Interpolated to WiFeS wavelength grid", where="mid")
-
-    ax.legend() 
-    ax.set_xlabel(f"$\lambda$")
-
 
     ###########################################################################
     # 7. Convolve by the line spread function
@@ -209,25 +186,9 @@ def create_mock_spectrum(sfh_mass_weighted, isochrones):
 
     spec_wifes_conv_lsf = convolve(spec_wifes_conv, kernel_lsf, mode="same") / np.nansum(kernel_lsf)
 
-    # Plot to check
-    fig, ax = plt.subplots(nrows=1, ncols=1, figsize=(fig_w, fig_h))
-    ax.step(lambda_vals_wifes_oversampled_A, spec_wifes_conv, color="black", label="Before convolution with LSF", where="mid")
-    ax.step(lambda_vals_wifes_oversampled_A, spec_wifes_conv_lsf, color="red", label="After convolution with LSF", where="mid")
-
-    ax.legend() 
-    ax.set_xlabel(f"$\lambda$")
-
     ###########################################################################
     # 8. Downsample to the WiFeS wavelength grid (corresponding to the COMB data cube)
     spec_wifes = np.nansum(spec_wifes_conv_lsf.reshape(-1, oversample_factor), axis=1) / oversample_factor
-
-    # Plot to check
-    fig, ax = plt.subplots(nrows=1, ncols=1, figsize=(fig_w, fig_h))
-    ax.step(lambda_vals_wifes_oversampled_A, spec_wifes_conv, color="black", label="Before downsampling", where="mid")
-    ax.step(lambda_vals_wifes_A, spec_wifes, color="red", label="After downsampling", where="mid")
-
-    ax.legend() 
-    ax.set_xlabel(f"$\lambda$")
 
     ###########################################################################
     # Convert to units of erg/s/cm2/A
@@ -237,16 +198,16 @@ def create_mock_spectrum(sfh_mass_weighted, isochrones):
 
     ###########################################################################
     # 9. Add noise. 
-    spec_wifes_flambda_err = spec_wifes_flambda / SNR
-    noise = np.random.normal(loc=0, scale=spec_wifes_flambda_err)
-    spec_wifes_noisy = spec_wifes_flambda + noise
+    spec_err = spec_wifes_flambda / SNR
+    noise = np.random.normal(loc=0, scale=spec_err)
+    spec = spec_wifes_flambda + noise
 
     # Plot to check
     fig, ax = plt.subplots(nrows=1, ncols=1, figsize=(fig_w, fig_h))
-    ax.step(lambda_vals_wifes_A, spec_wifes_flambda, color="black", label="Before noise", where="mid")
-    ax.step(lambda_vals_wifes_A, spec_wifes_noisy + 2e-17, color="red", label="After noise", where="mid")
+    ax.errorbar(x=lambda_vals_wifes_A, y=spec, yerr=spec_err, color="red")
 
     ax.legend() 
+    ax.set_title("Mock spectrum")
     ax.set_xlabel(f"$\lambda$")
 
     # Plot the SFH
@@ -255,7 +216,7 @@ def create_mock_spectrum(sfh_mass_weighted, isochrones):
 
     ###########################################################################
     # 10. Return.
-    return spec_wifes_noisy, spec_wifes_flambda_err
+    return spec, spec_err
 
 ###############################################################################
 #%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -287,4 +248,6 @@ if __name__ == "__main__":
     ###########################################################################
     # CREATE THE MOCK SPECTRUM
     ###########################################################################
-    spec, spec_err = create_mock_spectrum(sfh_mass_weighted, isochrones)    
+    spec, spec_err = create_mock_spectrum(sfh_mass_weighted=sfh_mass_weighted,
+                                          isochrones=isochrones,
+                                          z=z, SNR=SNR, sigma_star_kms=sigma_star_kms)    
