@@ -12,17 +12,12 @@
 #
 ###############################################################################
 #!/usr/bin/env python
-from __future__ import print_function
 import sys, os
 
 import matplotlib
-# matplotlib.use("Agg")
 
 from time import time
 
-from astropy.io import fits
-from astroquery.ned import Ned
-from astroquery.irsa_dust import IrsaDust
 from scipy import constants, ndimage
 import numpy as np
 import extinction
@@ -35,7 +30,9 @@ import ppxf.ppxf_util as util
 
 from cosmocalc import get_dist
 from log_rebin_errors import log_rebin_errors
-from ppxftests.ppxf_plot import ppxf_plot
+
+from ppxftests.mockspec import FWHM_WIFES_INST_A
+from ppxftests.ppxf_plot import ppxf_plot, plot_sfh_mass_weighted
 
 from IPython.core.debugger import Tracer
 
@@ -44,7 +41,7 @@ from IPython.core.debugger import Tracer
 ##############################################################################
 import matplotlib.pyplot as plt
 from matplotlib.backends.backend_pdf import PdfPages
-matplotlib.rc("font", size=14)
+matplotlib.rc("font", size=11)
 matplotlib.rc("text", usetex=False)
 matplotlib.rc("font", **{"family": "serif"})
 matplotlib.rc("image", interpolation="nearest")
@@ -84,7 +81,6 @@ def sigfig(number, err):
     number_truncated = np.round(number, -ndigits)
 
     return number_truncated, err_truncated, -ndigits
-
 
 def sci_notation(num, err):
     if num != 0:
@@ -132,110 +128,18 @@ def ppxf_helper(args):
     # Return
     return pp_age_met
 
-##########################################################################
-# Mass-weighted ages
-##########################################################################
-def compute_mass_weights(pp)
-    # Reshape the normalisation factors into the same shape as the ppxf weights
-    weights_light_weighted = pp.weights
-    weights_light_weighted = np.reshape(
-        weights_light_weighted[~pp.gas_component], (nmetals, nages))
-
-    # Convert the light-weighted ages into mass-weighted ages
-    weights_mass_weighted = weights_light_weighted * norm / stellar_template_norms
-
-    # Compute total mass in this bin
-    mass_tot = np.nansum(weights_mass_weighted)
-
-    # Sum in metallicity to get an age vector.
-    weights_mass_weighted_metallicity_summed = np.nansum(weights_mass_weighted, axis=0)
-
-##############################################################################
-# Wrapper for plotting
-##############################################################################
-def plot_wrapper(pp, ages, metallicities):
-
-    weights_mass_weighted = compute_mass_weights(pp)
-
-    fig_spec = plt.figure(figsize=(20, 12))
-    ax_hist = fig_spec.add_axes([0.1, 0.1, 0.8, 0.2])
-    # ax_1dhist = fig_spec.add_axes([0.1, 0.3, 0.8, 0.2])
-    ax_kin = fig_spec.add_axes([0.1, 0.55, 0.8, 0.2])
-    ax_age_met = fig_spec.add_axes([0.1, 0.75, 0.8, 0.2])
-    cbarax = fig_spec.add_axes([0.9, 0.1, 0.02, 0.2])
-
-    # Open the pdf file
-    # pp = PdfPages(fig_fname)
-
-    # Figure for auto_adjust_regul
-    # if auto_adjust_regul:
-        # fig_regul, ax_regul = plt.subplots()
-        # pp_regul = PdfPages(fig_regul_fname)
-
-    # Star formation history
-    # if np.any(weights_mass_weighted_metallicity_summed > 0): 
-    #     ax_1dhist.semilogy(weights_mass_weighted_metallicity_summed)
-    # ax_1dhist.set_ylabel(r"Mass ($\rm M_\odot$)")
-    # ax_1dhist.text(x=0.5, y=0.9, s="Star formation history", transform=ax_1dhist.transAxes, horizontalalignment="center")
-    # ax_1dhist.autoscale(axis="x", enable=True, tight=True)
-    # ax_1dhist.set_xticklabels([])
-    # ax_1dhist.axvline(idx_end_of_SB, color="gray")
-    # ax_1dhist.axvline(idx_start_of_SB, color="gray")
-
-    # Histogram
-    m = ax_hist.imshow(np.log10(weights_mass_weighted), cmap="cubehelix_r", origin="lower", aspect="auto", vmin=0, vmax=np.nanmax(np.log10(weights_mass_weighted)))
-    fig_spec.colorbar(m, cax=cbarax)
-    ax_hist.set_yticks(range(len(metallicities)))
-    ax_hist.set_yticklabels(["{:.3f}".format(met / 0.02)
-                             for met in metallicities])
-    ax_hist.set_ylabel(r"Metallicity ($Z_\odot$)")
-    cbarax.set_ylabel(r"Mass $\log_{10}(\rm M_\odot)$")
-    ax_hist.set_xticks(range(len(ages)))
-    ax_hist.set_xlabel("Age (Myr)")
-    ax_hist.set_title("Best fit stellar population")
-    ax_hist.set_xticklabels(["{:}".format(age / 1e6) for age in ages], rotation="vertical")
-
-    # Kinematic and age & metallicity fits
-    ax_age_met.clear()
-    # ax_kin.clear()
-    ppxf_plot(pp_age_met, ax_age_met)
-    # ppxf_plot(pp_kin, ax_kin)
-    ax_age_met.text(x=0.5, y=0.9, horizontalalignment="center", transform=ax_age_met.transAxes, s=r"ppxf fit (age and metallicity)")
-    # ax_kin.text(x=0.5, y=0.9, horizontalalignment="center", transform=ax_kin.transAxes, s=r"ppxf fit (kinematics); $v_* - v_{\rm sys} = %.2f$ km s$^{-1}$, $\sigma_* = %.2f$ km s$^{-1}$" % (pp_kin.sol[0] - v_sys, pp_kin.sol[1]))
-    ax_age_met.set_xticklabels([])
-    ax_age_met.set_xlabel("")
-    # ax_age_met.set_title(obj_name)
-    ax_age_met.autoscale(axis="x", enable=True, tight=True)
-    # ax_kin.autoscale(axis="x", enable=True, tight=True)
-
-    fig_spec.canvas.draw()
-
-    # Write to file
-    # pp.savefig(fig_spec)
-
-    # if auto_adjust_regul:
-    #     ax_regul.clear()
-    #     ax_regul.plot(regul_vals, obj_vals, "bo")
-    #     ax_regul.plot(regul_vals[np.nanargmin(obj_vals)], obj_vals[np.nanargmin(obj_vals)], "ro", label="Optimal fit")
-    #     ax_regul.axhline(0, color="gray")
-    #     ax_regul.set_title("Integrated spectrum")
-    #     ax_regul.set_xlabel("Regularisation parameter")
-    #     ax_regul.set_ylabel(r"$\Delta\chi_{\rm goal}^2 - \Delta\chi^2$")
-    #     ax_regul.legend()
-    #     fig_regul.canvas.draw()
-    #     pp_regul.savefig(fig_regul)
-
-    plt.show()
-
 ##############################################################################
 # START FUNCTION DEFINITION
 ##############################################################################
-def run_ppxf(spec, spec_err, lambda_vals_A, FWHM_inst_A,
+def run_ppxf(spec, spec_err, lambda_vals_A,
              z, ngascomponents,
-             isochrones,
              tie_balmer,
+             isochrones, metals_to_use=None,
+             FWHM_inst_A=FWHM_WIFES_INST_A,
              bad_pixel_ranges_A=[],
-             auto_adjust_regul=False):
+             auto_adjust_regul=False, nthreads=20,
+             delta_regul_min=5, regul_max=1e4,
+             plotit=True, savefigs=False, fname_str="ppxftests"):
     """
     Wrapper function for calling ppxf.
 
@@ -243,7 +147,7 @@ def run_ppxf(spec, spec_err, lambda_vals_A, FWHM_inst_A,
     spec                Input spectrum to fit to, on a linear wavelength scale
     spec_err            Corresponding 1-sigma errors 
     lambda_vals_A       Wavelength values, in Angstroms
-    FWHM_inst_A         Instrumental resoltuion in Angstroms
+    FWHM_inst_A         Instrumental resoltuion in Angstroms - defaults to WiFeS instrumental resolution for the B3000 grating
     z                   Galaxy redshift
     bad_pixel_ranges_A  Spectral regions to mask out (in Angstroms). format: [[lambda_1, lambda_2], ...]
     ngascomponents      Number of kinematic components to be fitted to the emission lines
@@ -251,8 +155,23 @@ def run_ppxf(spec, spec_err, lambda_vals_A, FWHM_inst_A,
     isochrones          Set of isochrones to use - must be Padova or Geneva
     tie_balmer          If true, use the Ha/Hb ratio to measure gas reddening.
     auto_adjust_regul   Whether to automatically determine the ideal "regul" value
+    nthreads            Number of threads to use for running simultaneous instances of ppxf
+    delta_regul_min     Minimum spacing in regularisation before the program exits (make it a larger value to speed up execution)
+    regul_max           Maximum regularisation value before the program gives up trying to find the minimum in regul space (make it a smaller value to speed up execution)
+
+    plotit              Whether to show plots showing the evolution of the regul parameter & ppxf fits
+    savefigs            If true, save figs to multi-page pdfs 
+    fname_str           Filename prefix for figure pdfs: must include absolute path to directory.
 
     """
+
+    ##############################################################################
+    # Set up plotting
+    ##############################################################################
+    if plotit and savefigs:
+        pdfpages_spec = PdfPages(f"{fname_str}_spec.pdf")
+        pdfpages_regul = PdfPages(f"{fname_str}_regul.pdf")
+
     ##############################################################################
     # Set up the input spectrum
     ##############################################################################
@@ -300,9 +219,20 @@ def run_ppxf(spec, spec_err, lambda_vals_A, FWHM_inst_A,
     # ppxf parameters
     ##############################################################################
     if isochrones == "Padova":
-        metals_to_use = ['004', '008', '019']
+        if metals_to_use is None:
+            metals_to_use = ['004', '008', '019']
+        else:
+            for m in metals_to_use:
+                assert m in ['004', '008', '019'],\
+                    f"Metallicity {m} for the {isochrones} isochrones not found!"
     elif isochrones == "Geneva":
-        metals_to_use = ['001', '004', '008', '020', '040']
+        if metals_to_use is None:
+            metals_to_use = ['001', '004', '008', '020', '040']
+        else:
+            for m in metals_to_use:
+                assert m in ['001', '004', '008', '020', '040'],\
+                    f"Metallicity {m} for the {isochrones} isochrones not found!"
+
     ssp_template_path = f"/home/u5708159/python/Modules/ppxftests/SSP_templates/SSP{isochrones}"
 
     # pPXF parameters for the age & metallicity + gas fit
@@ -333,7 +263,7 @@ def run_ppxf(spec, spec_err, lambda_vals_A, FWHM_inst_A,
     ##############################################################################
     # Load the .npz containing the stellar spectra
     ssp_template_fnames = [f"SSP{isochrones}.z{m}.npz" for m in metals_to_use]
-    nmetals = len(ssp_template_fnames)
+    N_metallicities = len(ssp_template_fnames)
 
     # All stars_templates_log must have the same number of wavelength values &
     # number of age bins!
@@ -344,8 +274,8 @@ def run_ppxf(spec, spec_err, lambda_vals_A, FWHM_inst_A,
     for ssp_template_fname in ssp_template_fnames:
         f = np.load(os.path.join(ssp_template_path, ssp_template_fname))
         metallicities.append(f["metallicity"].item())
-        ages = f["ages"][:-2]
-        spectra_ssp_linear = f["L_vals"][:, :-2]
+        ages = f["ages"]
+        spectra_ssp_linear = f["L_vals"]
         lambda_vals_ssp_linear = f["lambda_vals_A"]
 
         # Extract the wavelength range and logarithmically rebin one spectrum
@@ -365,8 +295,8 @@ def run_ppxf(spec, spec_err, lambda_vals_A, FWHM_inst_A,
         FWHM_diff_A = np.sqrt(FWHM_inst_A**2 - FWHM_ssp_A**2)
         sigma = FWHM_diff_A / (2 * np.sqrt(2 * np.log(2))) / \
             dlambda_A_ssp  # Sigma difference in pixels
-        nages = spectra_ssp_linear.shape[1]
-        for ii in range(nages):
+        N_ages = spectra_ssp_linear.shape[1]
+        for ii in range(N_ages):
             spec_ssp_linear = spectra_ssp_linear[:, ii]
             spec_ssp_linear = ndimage.gaussian_filter1d(spec_ssp_linear, sigma)
             spec_ssp_log, lambda_vals_ssp_log, velscale_temp =\
@@ -380,7 +310,7 @@ def run_ppxf(spec, spec_err, lambda_vals_A, FWHM_inst_A,
             stellar_template_norms.append(np.median(spec_ssp_log))
             
     # Reshape
-    stellar_template_norms = np.reshape(stellar_template_norms, (nmetals, nages))
+    stellar_template_norms = np.reshape(stellar_template_norms, (N_metallicities, N_ages))
 
     # String for filename
     metal_string = ""
@@ -393,7 +323,7 @@ def run_ppxf(spec, spec_err, lambda_vals_A, FWHM_inst_A,
     stars_templates_log = np.array(stars_templates_log)
     stars_templates_log = np.swapaxes(stars_templates_log, 0, 1)
     reg_dim = stars_templates_log.shape[1:]
-    nmetals, nages = reg_dim
+    N_metallicities, N_ages = reg_dim
     stars_templates_log = np.reshape(
         stars_templates_log, (stars_templates_log.shape[0], -1))
 
@@ -466,6 +396,59 @@ def run_ppxf(spec, spec_err, lambda_vals_A, FWHM_inst_A,
     templates = np.column_stack([stars_templates_log, gas_templates])
 
     ##########################################################################
+    # Mass-weighted ages
+    ##########################################################################
+    def compute_mass_weights(pp):
+        # Reshape the normalisation factors into the same shape as the ppxf weights
+        weights_light_weighted = pp.weights
+        weights_light_weighted = np.reshape(
+            weights_light_weighted[~pp.gas_component], (N_metallicities, N_ages))
+
+        # Convert the light-weighted ages into mass-weighted ages
+        weights_mass_weighted = weights_light_weighted * norm / stellar_template_norms
+
+        return weights_mass_weighted
+
+    ##############################################################################
+    # Wrapper for plotting
+    ##############################################################################
+    def plot_wrapper(pp):
+
+        # Comptue the mass weights 
+        N_ages = len(ages)
+        N_metallicities = len(metallicities)
+        weights_mass_weighted = compute_mass_weights(pp)
+
+        fig, axs = plt.subplots(nrows=2, ncols=1, figsize=(15, 6.5))
+        ax_spec, ax_hist = axs
+        bbox = ax_hist.get_position()
+        cbarax = fig.add_axes([bbox.x0 + bbox.width, bbox.y0, 0.03, bbox.height])
+
+        # Histogram
+        m = ax_hist.imshow(np.log10(weights_mass_weighted), cmap="cubehelix_r", origin="lower", aspect="auto", vmin=0, vmax=np.nanmax(np.log10(weights_mass_weighted)))
+        fig.colorbar(m, cax=cbarax)
+        ax_hist.set_yticks(range(len(metallicities)))
+        ax_hist.set_yticklabels(["{:.3f}".format(met / 0.02)
+                                 for met in metallicities])
+        ax_hist.set_ylabel(r"Metallicity ($Z_\odot$)")
+        cbarax.set_ylabel(r"Mass $\log_{10}(\rm M_\odot)$")
+        ax_hist.set_xticks(range(len(ages)))
+        ax_hist.set_xlabel("Age (Myr)")
+        ax_hist.set_title("Best fit star formation history")
+        ax_hist.set_xticklabels(["{:}".format(age / 1e6) for age in ages], rotation="vertical")
+
+        # Kinematic and age & metallicity fits
+        ax_spec.clear()
+        ppxf_plot(pp_age_met, ax_spec)
+        ax_spec.set_title("ppxf fit")
+        ax_spec.set_xticklabels([])
+        ax_spec.set_xlabel("")
+        ax_spec.autoscale(axis="x", enable=True, tight=True)
+
+        fig.canvas.draw()
+        plt.show()    
+
+    ##########################################################################
     # Use pPXF to obtain the stellar age + metallicity, and fit emission lines
     ##########################################################################
     t = time()
@@ -490,13 +473,21 @@ def run_ppxf(spec, spec_err, lambda_vals_A, FWHM_inst_A,
     print("----------------------------------------------------")
     print(F"Elapsed time in PPXF: {time() - t:.2f} s")
 
-    plt.close("all")
-    plot_wrapper(pp_age_met, ages, metallicities)
+    if plotit:
+        plt.close("all")
+        plot_wrapper(pp_age_met)
+        fig = plt.gcf()
+        fig.suptitle(f"First ppxf iteration: regul = 0")
+        if savefigs:
+            pdfpages_spec.savefig(fig, bbox_inches="tight")
+        if matplotlib.get_backend() != "agg":
+            hit_key_to_continue()
 
     if not auto_adjust_regul:
         # Run again but with regularization.
         print(F"Scaling noise by {np.sqrt(pp_age_met.chi2):.4f}...")
         noise_scaling_factor = np.sqrt(pp_age_met.chi2)
+        cnt = 1
 
         # Manually select the regul parameter value.
         while True:
@@ -526,8 +517,13 @@ def run_ppxf(spec, spec_err, lambda_vals_A, FWHM_inst_A,
             print("----------------------------------------------------")
             print(F"Elapsed time in PPXF: {time() - t:.2f} s")
 
-            plt.close("all")
-            plot_wrapper(pp_age_met, ages, metallicities)
+            if plotit:
+                plt.close("all")
+                plot_wrapper(pp_age_met)
+                fig = plt.gcf()
+                fig.suptitle(f"Manually determining regul parameter: regul = {regul:.2f} (iteration {cnt})")
+                if savefigs:
+                    pdfpages_spec.savefig(fig, bbox_inches="tight")
 
             while True:
                 key = input("Enter a new regul value, otherwise press enter: ")
@@ -537,7 +533,7 @@ def run_ppxf(spec, spec_err, lambda_vals_A, FWHM_inst_A,
                 break
             else:
                 regul = float(key)
-
+            cnt += 1
     else:
         # Run again but with regularization.
         print(F"Scaling noise by {np.sqrt(pp_age_met.chi2):.4f}...")
@@ -545,7 +541,9 @@ def run_ppxf(spec, spec_err, lambda_vals_A, FWHM_inst_A,
 
         # Run ppxf a number of times & find the value of regul that minimises 
         # the difference between the ideal delta-chi2 and the real delta-chi2.
-        regul_vals = np.linspace(0, 1000, 11)
+        regul_vals = np.linspace(0, 1e4, nthreads + 1)
+        delta_regul = np.diff(regul_vals)[0]
+
         obj_vals = []  # "objective" fn
         pps = []
 
@@ -561,7 +559,6 @@ def run_ppxf(spec, spec_err, lambda_vals_A, FWHM_inst_A,
         ]
 
         # Run in parallel
-        nthreads = 20 # min(multiprocessing.cpu_count(), len(args_list))
         print(f"Running ppxf on {nthreads} threads...")
         pool = multiprocessing.Pool(nthreads)
         pps = list(pool.map(ppxf_helper, args_list))
@@ -575,11 +572,65 @@ def run_ppxf(spec, spec_err, lambda_vals_A, FWHM_inst_A,
         obj_vals = [np.abs(delta_chi2 - delta_chi2_ideal) for delta_chi2 in delta_chi2_vals]
         opt_idx = np.nanargmin(obj_vals)
 
-        # If opt_idx is the largest value, then re-run this bin with larger regul values.
+        if plotit:
+            # Plot the best fit
+            plot_wrapper(pps[opt_idx])
+            fig = plt.gcf()
+            fig.suptitle(f"Automatically determining regul parameter: regul = {regul_vals[opt_idx]:.2f} (iteration {1})")
+            if savefigs:
+                pdfpages_spec.savefig(fig, bbox_inches="tight")
+
+            # Plot the regul values
+            fig_regul, ax_regul = plt.subplots(nrows=1, ncols=1)
+            ax_regul.plot(regul_vals, obj_vals, "bo")
+            ax_regul.plot(regul_vals[np.nanargmin(obj_vals)], obj_vals[np.nanargmin(obj_vals)], "ro", label="Optimal fit")
+            ax_regul.axhline(0, color="gray")
+            ax_regul.set_title(f"Regularisation determination (iteration {1})")
+            ax_regul.set_xlabel("Regularisation parameter")
+            ax_regul.set_ylabel(r"$\Delta\chi_{\rm goal}^2 - \Delta\chi^2$")
+            ax_regul.legend()
+            fig_regul.canvas.draw()
+            if savefigs:
+                pdfpages_regul.savefig(fig_regul, bbox_inches="tight")
+
+            if matplotlib.get_backend() != "agg":
+                hit_key_to_continue()
+
+        ###########
         cnt = 2
-        while regul_vals[opt_idx] == np.nanmax(regul_vals) and np.nanmax(regul_vals) < 5e3:
+        while True:
+            # Once the regul sampling reachs 1, quit 
+            if delta_regul <= delta_regul_min:
+                print(f"Minimum spacing between regul values reached; using {regul_vals[opt_idx]:.2f} to produce the best fit ")
+                break
+            elif opt_idx == len(regul_vals) - 1 and regul_vals[opt_idx] >= regul_max:
+                print(f"Optimal regul value is >= 1e4; using {regul_vals[opt_idx]:.2f} to produce the best fit")
+                break
+
+            # If the lowest regul value is "maxed out" then try again with an array starting at the highest regul value
+            elif regul_vals[opt_idx] == np.nanmax(regul_vals):
+                regul_span = np.nanmax(regul_vals) - np.nanmin(regul_vals)
+                regul_vals = np.linspace(np.nanmax(regul_vals),
+                                         np.nanmax(regul_vals) + regul_span,
+                                         nthreads + 1)
+
+            # Otherwise, sub-sample the previous array windowed around the optimal value.
+            else:
+                delta_regul /= 5
+                regul_vals = np.linspace(regul_vals[opt_idx] - nthreads / 2 * delta_regul, 
+                                         regul_vals[opt_idx] + nthreads / 2 * delta_regul,
+                                         nthreads + 1)
+
+            # Reset the values 
+            delta_regul = np.diff(regul_vals)[0]
+
+            ###########
+
+            # If opt_idx is the largest value, then re-run this bin with larger regul values.
+            
+            # while regul_vals[opt_idx] == np.nanmax(regul_vals) and np.nanmax(regul_vals) < 5e3:
             # Input arguments
-            regul_vals = np.linspace(np.nanmax(regul_vals), np.nanmax(regul_vals) + 1000, 11)
+            # regul_vals = np.linspace(np.nanmax(regul_vals), np.nanmax(regul_vals) + 500, nthreads + 1)
             args_list = [
                 [
                     templates, spec_log, spec_err_log, noise_scaling_factor,
@@ -602,280 +653,128 @@ def run_ppxf(spec, spec_err, lambda_vals_A, FWHM_inst_A,
             delta_chi2_vals = [(p.chi2 - 1) * len(good_px) for p in pps]
             obj_vals = [np.abs(delta_chi2 - delta_chi2_ideal) for delta_chi2 in delta_chi2_vals]
             opt_idx = np.nanargmin(obj_vals)
+            
+            # Plot the best fit
+            if plotit:
+                plot_wrapper(pps[opt_idx])
+                fig = plt.gcf()
+                fig.suptitle(f"Automatically determining regul parameter: regul = {regul_vals[opt_idx]:.2f} (iteration {cnt})")
+                if savefigs:
+                    pdfpages_spec.savefig(fig, bbox_inches="tight")
+
+                # Plot the regul values
+                fig_regul, ax_regul = plt.subplots(nrows=1, ncols=1)
+                ax_regul.plot(regul_vals, obj_vals, "bo")
+                ax_regul.plot(regul_vals[np.nanargmin(obj_vals)], obj_vals[np.nanargmin(obj_vals)], "ro", label="Optimal fit")
+                ax_regul.axhline(0, color="gray")
+                ax_regul.set_title(f"Regularisation determination (iteration {cnt})")
+                ax_regul.set_xlabel("Regularisation parameter")
+                ax_regul.set_ylabel(r"$\Delta\chi_{\rm goal}^2 - \Delta\chi^2$")
+                ax_regul.legend()
+                if savefigs:
+                    pdfpages_regul.savefig(fig_regul, bbox_inches="tight")
+
+                if matplotlib.get_backend() != "agg":
+                    hit_key_to_continue()
+
             cnt += 1
 
         pp_age_met = pps[opt_idx]
-
-    ##########################################################################
-    # Use pPXF to fit the stellar kinematics
-    ##########################################################################
-    pp_kin = ppxf(templates=stars_templates_log,
-                  galaxy=spec_log - pp_age_met.gas_bestfit, noise=spec_err_log * noise_scaling_factor,
-                  velscale=np.squeeze(velscale), start=start_kin,
-                  goodpixels=good_px,
-                  moments=nmoments_kin, degree=adegree_kin, mdegree=mdegree_kin,
-                  vsyst=dv,
-                  lam=np.exp(lambda_vals_log),
-                  method="capfit")
-    print("Formal errors:")
-    print("     dV    dsigma   dh3      dh4")
-    print("".join("%8.2g" % f for f in pp_kin.error * np.sqrt(pp_kin.chi2)))
-    print("Elapsed time in pPXF: %.2f s" % (time() - t))
-
-    ##########################################################################
-    # Reddening
-    ##########################################################################
-    # Calculate the A_V
-    if not tie_balmer and grating == "COMB":
-        intrinsic_ratios = {
-            "Halpha/Hbeta": 2.85,
-            "Hgamma/Hbeta": 0.468,
-            "Hdelta/Hbeta": 0.259,
-        }
-        balmer_line_waves = {
-            "Hdelta": 4101.734,
-            "Hgamma": 4340.464,
-            "Hbeta": 4861.325,
-            "Halpha": 6562.800,
-        }
-
-        for line_1, line_2 in [["Hgamma", "Hbeta"], ["Hdelta", "Hbeta"]]:
-            # From p. 384 of D&S
-            intrinsic_ratio = intrinsic_ratios[line_1 + "/" + line_2]
-
-            lfmap_1 = pp_age_met.gas_flux[list(gas_names).index(line_1)] * norm
-            lfmap_1_err = pp_age_met.gas_flux_error[list(
-                gas_names).index(line_1)] * norm
-
-            lfmap_2 = pp_age_met.gas_flux[list(gas_names).index(line_2)] * norm
-            lfmap_2_err = pp_age_met.gas_flux_error[list(
-                gas_names).index(line_2)] * norm
-
-            ratio = lfmap_1 / lfmap_2
-            ratio_err = ratio * ((lfmap_1_err / lfmap_1) **
-                                 2 + (lfmap_2_err / lfmap_2)**2)**(0.5)
-            ratio_SNR = ratio / ratio_err
-
-            E_ba = 2.5 * (np.log10(ratio)) - 2.5 * np.log10(intrinsic_ratio)
-            E_ba_err = 2.5 / np.log(10) * ratio_err / ratio
-
-            # Calculate ( A(Ha) - A(Hb) ) / E(B-V) from extinction curve
-            R_V = 3.1
-            wave_1_A = np.array([balmer_line_waves[line_1]])
-            wave_2_A = np.array([balmer_line_waves[line_2]])
-
-            # A_V is a multiplicative scale factor for the extinction curve.
-            # So the below calculation is the same regardless of A_V because
-            # we normalise by it.
-            E_ba_over_E_BV = float(extinction.fm07(wave_2_A, a_v=1.0) -
-                                   extinction.fm07(wave_1_A, a_v=1.0)) /\
-                1.0 * R_V
-
-            # Calculate E(B-V)
-            E_BV = 1 / E_ba_over_E_BV * E_ba
-            E_BV_err = 1 / E_ba_over_E_BV * E_ba_err
-
-            # Calculate A(V)
-            A_V = R_V * E_BV
-            A_V_err = R_V * E_BV_err
-
-            print(
-                "-----------------------------------------------------------------------")
-            print("Estimated mean A_V for integrated spectrum using ratio " +
-                  line_1 + "/" + line_2 + " (pPXF):")
-            print(f"A_V = {A_V:6.4f} +/- {A_V_err:6.4f}")
-            print(
-                "-----------------------------------------------------------------------")
-    elif tie_balmer and grating == "COMB":
-        print("-----------------------------------------------------------------------")
-        print("Estimated mean A_V for integrated spectrum using all Balmer lines (calculated by pPXF):")
-        print(f"A_V = {pp_age_met.gas_reddening * 3.1:6.4f}")
-        print("-----------------------------------------------------------------------")
-    else:
-        print("------------------------------------------------------------------------------")
-        print("Reddening not calculated due to insufficient Balmer lines in wavelength range")
-        print("------------------------------------------------------------------------------")
-
-
-    ##########################################################################
-    # Print emission line fluxes
-    ##########################################################################
-    print("pPXF emission line fluxes")
-    print("-----------------------------------------------------------------------")
-    # NOTE: since the input spectrum is in units of erg/s/cm2/A, these fluxes 
-    # need to be multilpied by the spectral pixel width in Angstroms to get the 
-    # flux in units of erg/s/cm2.
-    for name, flux, flux_error in zip(pp_age_met.gas_names,
-                                      pp_age_met.gas_flux,
-                                      pp_age_met.gas_flux_error):
-        try:
-            print(f"{name} \t & {sci_notation(flux * norm, flux_error * norm)} \\\\")
-        except:
-            pass
 
     ##########################################################################
     # Template weights
     ##########################################################################
     weights_age_met = pp_age_met.weights
     weights_age_met = np.reshape(
-        weights_age_met[~gas_component], (nmetals, nages))
+        weights_age_met[~gas_component], (N_metallicities, N_ages))
     weights_age_met /= np.nansum(weights_age_met)
-
-    weights_kin = pp_kin.weights
-    weights_kin = np.reshape(weights_kin, (nmetals, nages))
-    weights_kin /= np.nansum(weights_kin)
-    # np.save(os.path.join(data_dir, f"{obj_name}_mass_weights.npy"), weights_mass_weighted_metallicity_summed)
-    # np.save(os.path.join(data_dir, f"ppxf_ages.npy"), ages)
-    # When you load this, you must use the pickle option:
-    #    np.load(os.path.join(data_dir, f"{obj_name}_mass_weights.npy"), allow_pickle=True)
-
-    # ##########################################################################
-    # # Insert your own code here to do stuff with the SFH 
-    # # (e.g. calculate the mass-weighted mean age etc.)
-    # ##########################################################################
-    # if np.all(weights_mass_weighted_metallicity_summed <= 0):
-    #     print(f"ERROR processing {obj_name}: all weights are <= 0!")
-    #     t_start_of_SB = np.nan
-    #     t_end_of_SB = np.nan
-    #     idx_end_of_SB = np.nan
-    #     idx_start_of_SB = np.nan
-    # else:
-    #     # Case: star formation is still ongoing
-    #     if weights_mass_weighted_metallicity_summed[0] > 0:
-    #         idx_end_of_SB = 0
-    #         t_end_of_SB = 0
-    #         if np.any(weights_mass_weighted_metallicity_summed == 0):
-    #             idx_start_of_SB = np.argwhere(weights_mass_weighted_metallicity_summed == 0)[0][0]
-    #             t_start_of_SB = ages[weights_mass_weighted_metallicity_summed == 0][0] / 1e6  # in Myr
-    #         else:
-    #             idx_start_of_SB = len(ages - 1)
-    #             t_start_of_SB = ages[-1]
-    #     else:
-    #         # Other case: star formation has ceased
-    #         idx_end_of_SB = np.argwhere(weights_mass_weighted_metallicity_summed == 0)[0][0]
-    #         t_end_of_SB = ages[weights_mass_weighted_metallicity_summed == 0][0] / 1e6  # in Myr
-    #         if len(np.argwhere(weights_mass_weighted_metallicity_summed == 0)) >= 2:
-    #             idx_start_of_SB = np.argwhere(weights_mass_weighted_metallicity_summed == 0)[1][0]        
-    #             t_start_of_SB = ages[weights_mass_weighted_metallicity_summed == 0][1] / 1e6  # in Myr
-    #         else:
-    #             idx_start_of_SB = len(ages - 1)
-    #             t_start_of_SB = ages[-1]            
-
-    # # mass-weighted mean stellar age in Myr
-    # mass_average_age = (np.nansum(weights_mass_weighted_metallicity_summed * ages) / np.nansum(weights_mass_weighted)) / 1e6
-    
-    # mask = np.zeros(ages.shape, dtype="bool")
-    # mask[ages > 1.0e8] = True # mask out all the values that have ages larger than 100 Myr or 1e8 yrs 
-    # mass_array_below_100Myr = np.ma.masked_array(weights_mass_weighted_metallicity_summed, mask=mask)
-    # total_mass_below_100Myr = np.nansum(mass_array_below_100Myr)
-    # total_mass_fraction_below_100Myr = total_mass_below_100Myr / mass_tot
-
-    # mask = np.zeros(ages.shape, dtype="bool")
-    # mask[ages > 2.5e8] = True # mask out all the values that have ages larger than 100 Myr or 1e8 yrs 
-    # mass_array_below_250Myr = np.ma.masked_array(weights_mass_weighted_metallicity_summed, mask=mask)
-    # total_mass_below_250Myr = np.nansum(mass_array_below_250Myr)
-    # total_mass_fraction_below_250Myr = total_mass_below_250Myr / mass_tot
-
-    # mask = np.zeros(ages.shape, dtype="bool")
-    # mask[ages > 1e9] = True # mask out all the values that have ages larger than 100 Myr or 1e8 yrs 
-    # mass_array_below_1Gyr = np.ma.masked_array(weights_mass_weighted_metallicity_summed, mask=mask)
-    # total_mass_below_1Gyr = np.nansum(mass_array_below_1Gyr)
-    # total_mass_fraction_below_1Gyr = total_mass_below_1Gyr / mass_tot
 
     ##########################################################################
     # Plotting the fit
     ##########################################################################
-    if plotit:
-        plot_wrapper(pp)
+    plot_wrapper(pp_age_met)
+    fig = plt.gcf()
+    fig.suptitle(f"Best fit (regul = {regul_vals[opt_idx]:.2f})")
+    if savefigs:
+        pdfpages_spec.savefig(fig, bbox_inches="tight")
+        pdfpages_spec.close()
+        pdfpages_regul.close()
 
-    # Close the PDF files
-    # if plotit:
-    #     pp.close()
-    #     if auto_adjust_regul:
-    #         pp_regul.close()
+    return pp_age_met, compute_mass_weights(pp_age_met)
 
-    # ##########################################################################
-    # # Save to FITS file
-    # ##########################################################################
-    # hdulist = []
-    # hdulist.append(fits.PrimaryHDU())
-    # hdulist[0].header['NAXIS'] = 1
-    # hdulist[0].header['OBJECT'] = obj_name
-    # hdulist[0].header['FNAME'] = input_fits_fname
-    # hdulist[0].header['ISOCHRN'] = isochrones
-    # hdulist[0].header['REGUL'] = regul
-    # hdulist[0].header["NRE"] = r
+###############################################################################
+#%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+###############################################################################
+if __name__ == "__main__":
+    from mockspec import create_mock_spectrum, get_age_and_metallicity_values
 
-    # # Wavelength information
-    # # Because the FITS standard only allows linear axis values, we store the 
-    # # log of the rebinned wavelength values since these will be evenly spaced.
-    # hdulist[0].header['NAXIS1'] = len(lambda_vals_log)
-    # hdulist[0].header['CRPIX1'] = 1
-    # hdulist[0].header['CDELT1'] = lambda_vals_log[1] - lambda_vals_log[0]
-    # hdulist[0].header['CUNIT1'] = 'log Angstroms'
-    # hdulist[0].header['CTYPE1'] = 'Wavelength'
-    # hdulist[0].header['CRVAL1'] = lambda_vals_log[0]
+    ###########################################################################
+    # Mock spectra options
+    ###########################################################################
+    isochrones = "Padova"  # Set of isochrones to use 
+    
+    ###########################################################################
+    # GALAXY PROPERTIES
+    ###########################################################################
+    sigma_star_kms = 350   # LOS velocity dispersion, km/s
+    z = 0.05               # Redshift 
+    SNR = 100               # S/N ratio
 
-    # # Storing other information
-    # hdulist.append(fits.ImageHDU(data=spec_log * norm,  #binned_spec_cube_log,
-    #                              name="Integrated spectrum (log)"))
-    # hdulist.append(fits.ImageHDU(data=spec_err_log * norm,
-    #                              name="Integrated spectrum (log) errors"))
-    # hdulist.append(fits.ImageHDU(data=(pp_age_met.bestfit - pp_age_met.gas_bestfit) * norm,
-    #                              name="Best fit spectrum (log)"))
+    ###########################################################################
+    # DEFINE THE SFH
+    ###########################################################################
+    # Idea 1: use a Gaussian kernel to smooth "delta-function"-like SFHs
+    # Idea 2: are the templates logarithmically spaced in age? If so, could use e.g. every 2nd template 
+    ages, metallicities = get_age_and_metallicity_values(isochrones)
+    N_ages = len(ages)
+    N_metallicities = len(metallicities)
 
-    # # Other stuff we need to keep
-    # hdulist[0].header["SNR"] = SNR
-    # hdulist[0].header["R_V"] = 3.1
-    # hdulist[0].header["A_V"] = pp_age_met.gas_reddening * 3.1 if pp_age_met.gas_reddening is not None else None
-    # hdulist[0].header["V"] = pp_kin.sol[0]
-    # hdulist[0].header["V_ERR"] = pp_kin.error[0]  # NOTE: unreliable error estimate (see ppxf documentation)
-    # hdulist[0].header["VD"] = pp_kin.sol[1]
-    # hdulist[0].header["VD_ERR"] = pp_kin.error[1]  # NOTE: unreliable error estimate (see ppxf documentation)
+    sfh_input = np.zeros((N_metallicities, N_ages))
+    # sfh_input[1, 10] = 1e7
+    sfh_input[2, 4] = 1e10
 
-    # # Gas kinematics
-    # for n in range(1, ncomponents):
-    #     hdulist[0].header["VG{}".format(n)] = pp_age_met.sol[n][0]
-    #     hdulist[0].header["VG{}_ERR".format(n)] = pp_age_met.error[n][0]
-    #     hdulist[0].header["VGD{}".format(n)] = pp_age_met.sol[n][1]
-    #     hdulist[0].header["VGD{}ERR".format(n)] = pp_age_met.error[n][1]
+    ###########################################################################
+    # CREATE THE MOCK SPECTRUM
+    ###########################################################################
+    spec, spec_err, lambda_vals_A = create_mock_spectrum(
+        sfh_mass_weighted=sfh_input,
+        isochrones=isochrones, z=z, SNR=SNR, sigma_star_kms=sigma_star_kms,
+        plotit=False)    
 
-    # hdulist = fits.HDUList(hdulist)
+    ###########################################################################
+    # RUN PPXF
+    ###########################################################################
+    pp, sfh_fit = run_ppxf(spec=spec, spec_err=spec_err, lambda_vals_A=lambda_vals_A, 
+                           z=z, ngascomponents=1,
+                           auto_adjust_regul=True,
+                           plotit=True,
+                           isochrones="Padova", tie_balmer=True)
 
-    # # Save to file
-    # hdulist.writeto(output_fits_fname, overwrite=True)
+    ###########################################################################
+    # COMPARE THE INPUT AND OUTPUT
+    ###########################################################################
+    # side-by-side comparison of the SFHs, plus residual map
+    plot_sfh_mass_weighted(sfh_input, ages, metallicities)
+    plot_sfh_mass_weighted(sfh_fit, ages, metallicities)
 
-    # ##########################################################################
-    # # Save to DataFrame in CSV file
-    # ##########################################################################
-    # df_output.loc[obj_name, "ppxf_success"] = True if np.any(weights_mass_weighted_metallicity_summed > 0) else False
-    # df_output.loc[obj_name, "t_start_of_SB (Myr)"] = t_start_of_SB
-    # df_output.loc[obj_name, "t_end_of_SB (Myr)"] = t_end_of_SB
-    # df_output.loc[obj_name, "mass_average_age (Myr)"] = mass_average_age
-    # df_output.loc[obj_name, "total_mass_below_100Myr (M_sun)"] = total_mass_below_100Myr
-    # df_output.loc[obj_name, "total_mass_fraction_below_100Myr"] = total_mass_fraction_below_100Myr
-    # df_output.loc[obj_name, "total_mass_below_250Myr (M_sun)"] = total_mass_below_250Myr
-    # df_output.loc[obj_name, "total_mass_fraction_below_250Myr"] = total_mass_fraction_below_250Myr
-    # df_output.loc[obj_name, "mass_tot (M_sun)"] = mass_tot
-
-    # for aa, age in enumerate(ages):
-    #     df_output.loc[obj_name, f"mass (M_sun) in template t = {age / 1e6:.2e} yr"] = weights_mass_weighted_metallicity_summed[aa]
-
-    # df_output.loc[obj_name, "SNR"] = SNR
-    # df_output.loc[obj_name, "R_V"] = 3.1
-    # df_output.loc[obj_name, "A_V"] = pp_age_met.gas_reddening * 3.1 if pp_age_met.gas_reddening is not None else None
-    # df_output.loc[obj_name, "stellar_velocity (km/s)"] = pp_kin.sol[0]
-    # df_output.loc[obj_name, "stellar_velocity_error (km/s)"] = pp_kin.error[0]  # NOTE: unreliable error estimate (see ppxf documentation)
-    # df_output.loc[obj_name, "stellar_velocity_dispersion (km/s)"] = pp_kin.sol[1]
-    # df_output.loc[obj_name, "stellar_velocity_dispersion_error (km/s)"] = pp_kin.error[1]  # NOTE: unreliable error estimate (see ppxf documentation)
-
-    # # Gas kinematics
-    # for n in range(1, ncomponents):
-    #     df_output.loc[obj_name, "gas_velocity_component_{} (km/s)".format(n)] = pp_age_met.sol[n][0]
-    #     df_output.loc[obj_name, "gas_velocity_component_{}_error (km/s)".format(n)] = pp_age_met.error[n][0]
-    #     df_output.loc[obj_name, "gas_velocity_dispersion_component_{} (km/s)".format(n)] = pp_age_met.sol[n][1]
-    #     df_output.loc[obj_name, "gas_velocity_dispersion_component_{}_error (km/s)".format(n)] = pp_age_met.error[n][1]
-
-    # df_output.to_csv(os.path.join(data_dir, "S7_ppxf_data.csv"))
-
+    # Plot the residual
+    fig, ax = plt.subplots(nrows=1, ncols=1, figsize=(10, 3.5))
+    bbox = ax.get_position()
+    cax = fig.add_axes([bbox.x0 + bbox.width, bbox.x0, 0.025, bbox.height])
+    
+    # Plot the SFH
+    delta_sfh = sfh_input - sfh_fit
+    m = ax.imshow(delta_sfh, cmap="coolwarm", 
+                  origin="lower", aspect="auto",
+                  vmin=-np.abs(np.nanmax(delta_sfh)), vmax=np.abs(np.nanmax(delta_sfh)))
+    fig.colorbar(m, cax=cax)
+    
+    # Decorations
+    ax.set_yticks(range(len(metallicities)))
+    ax.set_yticklabels(["{:.3f}".format(met / 0.02) for met in metallicities])
+    ax.set_ylabel(r"Metallicity ($Z_\odot$)")
+    cax.set_ylabel(r"Residual (\rm M_\odot)$")
+    ax.set_xticks(range(len(ages)))
+    ax.set_xlabel("Age (Myr)")
+    ax.set_xticklabels(["{:}".format(age / 1e6) for age in ages], rotation="vertical")
 
