@@ -12,19 +12,31 @@
 ###############################################################################
 import matplotlib.pyplot as plt
 import numpy as np
+from IPython.core.debugger import Tracer
 
 ###############################################################################
-def plot_sfh_mass_weighted(sfh_mass_weighted, ages, metallicities):
+def plot_sfh_mass_weighted(sfh_mass_weighted, ages, metallicities, 
+                           ax=None):
     """
     A handy function for making a nice plot of the SFH.
     """
+    assert sfh_mass_weighted.shape[1] == len(ages),\
+        "The first dimension of sfh_mass_weighted must be equal to the number of ages!"
+    assert sfh_mass_weighted.shape[0] == len(metallicities),\
+        "The zeroth dimension of sfh_mass_weighted must be equal to the number of metallicities!"
+
     # Create figure
-    fig, ax = plt.subplots(nrows=1, ncols=1, figsize=(10, 3.5))
+    if ax is None:
+        fig, ax = plt.subplots(nrows=1, ncols=1, figsize=(10, 3.5))
+    else:
+        fig = ax.get_figure()
     bbox = ax.get_position()
-    cax = fig.add_axes([bbox.x0 + bbox.width, bbox.x0, 0.025, bbox.height])
+    cax = fig.add_axes([bbox.x0 + bbox.width, bbox.y0, 0.025, bbox.height])
     
     # Plot the SFH
-    m = ax.imshow(np.log10(sfh_mass_weighted), cmap="magma_r", origin="lower", aspect="auto")
+    m = ax.imshow(np.log10(sfh_mass_weighted), cmap="cubehelix_r", 
+                  origin="lower", aspect="auto", 
+                  vmin=0, vmax=np.nanmax(np.log10(sfh_mass_weighted)))
     fig.colorbar(m, cax=cax)
     
     # Decorations
