@@ -11,7 +11,7 @@ from itertools import product
 import ppxf.ppxf_util as util
 
 from cosmocalc import get_dist
-from ppxf_plot import plot_sfh_mass_weighted
+from ppxftests.ppxf_plot import plot_sfh_mass_weighted
 
 import matplotlib.pyplot as plt
 plt.ion()
@@ -25,10 +25,30 @@ N_AGES_PADOVA = 74
 N_MET_PADOVA = 3
 N_AGES_GENEVA = 46
 N_MET_GENEVA = 5
+FWHM_WIFES_INST_A = 1.4
 
 ###############################################################################
-def create_mock_spectrum(sfh_mass_weighted, isochrones, sigma_star_kms, z,
-                         SNR):
+# Get age & metallicity arrays
+def get_age_and_metallicity_values(isochrones):
+    assert isochrones == "Geneva" or isochrones == "Padova",\
+        "isochrones must be either Padova or Geneva!"
+    ssp_template_fnames = [os.path.join(ssp_template_path, f"SSP{isochrones}", f) for f in os.listdir(os.path.join(ssp_template_path, f"SSP{isochrones}")) if f.endswith(".npz")]
+    metallicities = []
+    ages = []
+    for ssp_template_fname in ssp_template_fnames:
+        f = np.load(os.path.join(ssp_template_path, ssp_template_fname))
+        metallicities.append(f["metallicity"].item())
+        ages = f["ages"] if ages == [] else ages
+        lambda_vals_ssp_linear = f["lambda_vals_A"]
+
+    metallicities = np.array(metallicities)
+    ages = np.array(ages)
+
+    return ages, metallicities
+
+###############################################################################
+def create_mock_spectrum(sfh_mass_weighted, isochrones, sigma_star_kms, z, SNR,
+                         plotit=True):
     
     """
     Create a mock spectrum given an input star formation history, stellar 
@@ -47,7 +67,8 @@ def create_mock_spectrum(sfh_mass_weighted, isochrones, sigma_star_kms, z,
                             spectrum.
 
     Returns:
-    spec, spec_err          mock spectrum and corresponding 1-sigma errors.
+    spec, spec_err          mock spectrum and corresponding 1-sigma errors, in
+                            units of erg/s. 
 
     """
 
@@ -59,10 +80,10 @@ def create_mock_spectrum(sfh_mass_weighted, isochrones, sigma_star_kms, z,
         f"sfh_mass_weighted must have dimensions ({N_metallicities}, {N_ages})!"
 
     ###########################################################################
-    # Instrument properties
+    # WIFES Instrument properties
     ###########################################################################
     # Compute the width of the LSF kernel we need to apply to the templates
-    FWHM_inst_A = 1.4      # for the WiFeS COMB cube; as measured using sky lines in the b3000 grating
+    FWHM_inst_A = FWHM_WIFES_INST_A    # for the WiFeS COMB cube; as measured using sky lines in the b3000 grating
     dlambda_A_ssp = 0.30  # Gonzalez-Delgado spectra_linear have a constant spectral sampling of 0.3 A.
     # Assuming that sigma = dlambda_A_ssp.
     FWHM_ssp_A = 2 * np.sqrt(2 * np.log(2)) * dlambda_A_ssp
@@ -130,17 +151,18 @@ def create_mock_spectrum(sfh_mass_weighted, isochrones, sigma_star_kms, z,
     spec_linear = np.nansum(np.nansum(sfh_mass_weighted[:, :, None] * spec_arr_linear, axis=0), axis=0)
 
     # Plot to check
-    fig, ax = plt.subplots(nrows=1, ncols=1, figsize=(fig_w, fig_h))
-    ax.plot(lambda_vals_ssp_linear, spec_linear, color="black", label="Spectrum")
-    for mm, aa in product(range(N_metallicities), range(N_ages)):
-        w = sfh_mass_weighted[mm, aa]
-        if w > 0:
-            ax.plot(lambda_vals_ssp_linear, spec_arr_linear[mm, aa, :] * w, 
-                    label=f"t = {ages[aa] / 1e6:.2f} Myr, m = {metallicities[mm]:.4f}, w = {w:g}")
-    ax.set_ylabel(f"$L$ (erg/s/$\AA$/M$_\odot$)")
-    ax.set_xlabel(f"$\lambda$")
-    ax.legend()
-    ax.autoscale(enable="True", axis="x", tight=True)
+    if plotit:
+        fig, ax = plt.subplots(nrows=1, ncols=1, figsize=(fig_w, fig_h))
+        ax.plot(lambda_vals_ssp_linear, spec_linear, color="black", label="Spectrum")
+        for mm, aa in product(range(N_metallicities), range(N_ages)):
+            w = sfh_mass_weighted[mm, aa]
+            if w > 0:
+                ax.plot(lambda_vals_ssp_linear, spec_arr_linear[mm, aa, :] * w, 
+                        label=f"t = {ages[aa] / 1e6:.2f} Myr, m = {metallicities[mm]:.4f}, w = {w:g}")
+        ax.set_ylabel(f"$L$ (erg/s/$\AA$/M$_\odot$)")
+        ax.set_xlabel(f"$\lambda$")
+        ax.legend()
+        ax.autoscale(enable="True", axis="x", tight=True)
 
     ###########################################################################
     # 2. Logarithmically re-bin
@@ -160,11 +182,12 @@ def create_mock_spectrum(sfh_mass_weighted, isochrones, sigma_star_kms, z,
              np.exp(- (delta_v_vals_kms**2) / (2 * sigma_star_kms**2))
 
     # Plot to check
-    fig, ax = plt.subplots(nrows=1, ncols=1)
-    ax.plot(delta_v_vals_kms, kernel_losvd)
-    ax.axvline(0, color="black")
-    ax.set_xlabel(r"$\Delta v$")
-    ax.set_title("LOSVD kernel")
+    if plotit:
+        fig, ax = plt.subplots(nrows=1, ncols=1)
+        ax.plot(delta_v_vals_kms, kernel_losvd)
+        ax.axvline(0, color="black")
+        ax.set_xlabel(r"$\Delta v$")
+        ax.set_title("LOSVD kernel")
 
     ###########################################################################
     # 4. Convolve the LOSVD kernel with the mock spectrum
@@ -191,32 +214,27 @@ def create_mock_spectrum(sfh_mass_weighted, isochrones, sigma_star_kms, z,
     spec_wifes = np.nansum(spec_wifes_conv_lsf.reshape(-1, oversample_factor), axis=1) / oversample_factor
 
     ###########################################################################
-    # Convert to units of erg/s/cm2/A
-    D_A_Mpc, D_L_Mpc = get_dist(z, H0=70.0, WM=0.3)
-    D_L_cm = D_L_Mpc * 1e6 * 3.086e18
-    spec_wifes_flambda = spec_wifes * 1 / (4 * np.pi * D_L_cm**2)
-
-    ###########################################################################
     # 9. Add noise. 
-    spec_err = spec_wifes_flambda / SNR
+    spec_err = spec_wifes / SNR
     noise = np.random.normal(loc=0, scale=spec_err)
-    spec = spec_wifes_flambda + noise
+    spec = spec_wifes + noise
 
     # Plot to check
-    fig, ax = plt.subplots(nrows=1, ncols=1, figsize=(fig_w, fig_h))
-    ax.errorbar(x=lambda_vals_wifes_A, y=spec, yerr=spec_err, color="red")
+    if plotit:
+        fig, ax = plt.subplots(nrows=1, ncols=1, figsize=(fig_w, fig_h))
+        ax.errorbar(x=lambda_vals_wifes_A, y=spec, yerr=spec_err, color="red")
 
-    ax.legend() 
-    ax.set_title("Mock spectrum")
-    ax.set_xlabel(f"$\lambda$")
+        ax.legend() 
+        ax.set_title("Mock spectrum")
+        ax.set_xlabel(f"$\lambda$")
 
-    # Plot the SFH
-    plot_sfh_mass_weighted(sfh_mass_weighted, ages, metallicities)
-    plt.gcf().get_axes()[0].set_title("Input SFH")
+        # Plot the SFH
+        plot_sfh_mass_weighted(sfh_mass_weighted, ages, metallicities)
+        plt.gcf().get_axes()[0].set_title("Input SFH")
 
     ###########################################################################
     # 10. Return.
-    return spec, spec_err
+    return spec, spec_err, lambda_vals_wifes_A
 
 ###############################################################################
 #%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -248,6 +266,6 @@ if __name__ == "__main__":
     ###########################################################################
     # CREATE THE MOCK SPECTRUM
     ###########################################################################
-    spec, spec_err = create_mock_spectrum(sfh_mass_weighted=sfh_mass_weighted,
+    spec, spec_err, lambda_valsA = create_mock_spectrum(sfh_mass_weighted=sfh_mass_weighted,
                                           isochrones=isochrones,
                                           z=z, SNR=SNR, sigma_star_kms=sigma_star_kms)    
