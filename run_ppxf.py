@@ -123,7 +123,8 @@ def ppxf_helper(args):
           reddening_func=reddening_fm07,
           reg_dim=reg_dim,
           component=kinematic_components, gas_component=gas_component,
-          gas_names=gas_names, gas_reddening=gas_reddening, method="capfit")
+          gas_names=gas_names, gas_reddening=gas_reddening, method="capfit",
+          quiet=True)
 
     # Return
     return pp_age_met
@@ -140,6 +141,7 @@ def run_ppxf(spec, spec_err, lambda_vals_A,
              bad_pixel_ranges_A=[],
              auto_adjust_regul=False, nthreads=20,
              delta_regul_min=5, regul_max=1e4,
+             interactive_mode=False,
              plotit=True, savefigs=False, fname_str="ppxftests"):
     """
     Wrapper function for calling ppxf.
@@ -310,7 +312,6 @@ def run_ppxf(spec, spec_err, lambda_vals_A,
             stars_templates_linear[-1][:, ii] = spec_ssp_linear / np.median(spec_ssp_linear)
 
             stellar_template_norms.append(np.median(spec_ssp_log))
-            
     # Reshape
     stellar_template_norms = np.reshape(stellar_template_norms, (N_metallicities, N_ages))
 
@@ -478,13 +479,14 @@ def run_ppxf(spec, spec_err, lambda_vals_A,
                       reddening_func=reddening_fm07,
                       reg_dim=reg_dim,
                       component=kinematic_components, gas_component=gas_component,
-                      gas_names=gas_names, gas_reddening=gas_reddening, method="capfit")
+                      gas_names=gas_names, gas_reddening=gas_reddening, method="capfit",
+                      quiet=True)
     delta_chi2 = (pp_age_met.chi2 - 1) * len(good_px)
     print("----------------------------------------------------")
     print(F"Desired Delta Chi^2: {delta_chi2_ideal:.4g}")
     print(F"Current Delta Chi^2: {delta_chi2:.4g}")
     print("----------------------------------------------------")
-    print(F"Elapsed time in PPXF: {time() - t:.2f} s")
+    print(F"Elapsed time in PPXF (single execution): {time() - t:.2f} s")
 
     if plotit:
         plt.close("all")
@@ -493,7 +495,7 @@ def run_ppxf(spec, spec_err, lambda_vals_A,
         fig.suptitle(f"First ppxf iteration: regul = 0")
         if savefigs:
             pdfpages_spec.savefig(fig, bbox_inches="tight")
-        if matplotlib.get_backend() != "agg":
+        if matplotlib.get_backend() != "agg" and interactive_mode:
             hit_key_to_continue()
 
     if not auto_adjust_regul:
@@ -573,10 +575,12 @@ def run_ppxf(spec, spec_err, lambda_vals_A,
 
         # Run in parallel
         print(f"Running ppxf on {nthreads} threads...")
+        t = time()
         pool = multiprocessing.Pool(nthreads)
         pps = list(pool.map(ppxf_helper, args_list))
         pool.close()
         pool.join()
+        print(F"Elapsed time in PPXF (multithreaded): {time() - t:.2f} s")
 
         # Determine which is the optimal regul value
         # Quite certain this is correct - see here: https://pypi.org/project/ppxf/#how-to-set-regularization
@@ -606,7 +610,7 @@ def run_ppxf(spec, spec_err, lambda_vals_A,
             if savefigs:
                 pdfpages_regul.savefig(fig_regul, bbox_inches="tight")
 
-            if matplotlib.get_backend() != "agg":
+            if matplotlib.get_backend() != "agg" and interactive_mode:
                 hit_key_to_continue()
 
         ###########
@@ -656,10 +660,12 @@ def run_ppxf(spec, spec_err, lambda_vals_A,
 
             # Run in parallel
             print(f"Re-running ppxf on {nthreads} threads (iteration {cnt})...")
+            t = time()
             pool = multiprocessing.Pool(nthreads)
             pps = list(pool.map(ppxf_helper, args_list))
             pool.close()
             pool.join()
+            print(F"Elapsed time in PPXF (multithreaded): {time() - t:.2f} s")
 
             # Determine which is the optimal regul value
             regul_vals = [p.regul for p in pps]  # Redefining as pool may not retain the order of the input list
@@ -687,7 +693,7 @@ def run_ppxf(spec, spec_err, lambda_vals_A,
                 if savefigs:
                     pdfpages_regul.savefig(fig_regul, bbox_inches="tight")
 
-                if matplotlib.get_backend() != "agg":
+                if matplotlib.get_backend() != "agg" and interactive_mode:
                     hit_key_to_continue()
 
             cnt += 1
