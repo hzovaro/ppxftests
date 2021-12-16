@@ -135,6 +135,7 @@ def run_ppxf(spec, spec_err, lambda_vals_A,
              z, ngascomponents,
              tie_balmer,
              isochrones, metals_to_use=None,
+             fit_gas=True,
              FWHM_inst_A=FWHM_WIFES_INST_A,
              bad_pixel_ranges_A=[],
              auto_adjust_regul=False, nthreads=20,
@@ -225,6 +226,7 @@ def run_ppxf(spec, spec_err, lambda_vals_A,
             for m in metals_to_use:
                 assert m in ['004', '008', '019'],\
                     f"Metallicity {m} for the {isochrones} isochrones not found!"
+
     elif isochrones == "Geneva":
         if metals_to_use is None:
             metals_to_use = ['001', '004', '008', '020', '040']
@@ -238,10 +240,10 @@ def run_ppxf(spec, spec_err, lambda_vals_A,
     # pPXF parameters for the age & metallicity + gas fit
     adegree_age_met = -1     # Should be zero for age + metallicity fitting
     mdegree_age_met = 4     # Should be zero for kinematic fitting
-    ncomponents = ngascomponents + 1    # number of kinematic components. 2 = stars + gas; 3 = stars + 2 * gas
+    ncomponents = ngascomponents + 1 if fit_gas else 1    # number of kinematic components. 2 = stars + gas; 3 = stars + 2 * gas
     nmoments_age_met = [2 for i in range(ncomponents)]
-    start_age_met = [[vel, 100.] for i in range(ncomponents)]
-    fixed_age_met = [[0, 0] for i in range(ncomponents)]
+    start_age_met = [[vel, 100.] for i in range(ncomponents)] if fit_gas else [vel, 100.]
+    fixed_age_met = [[0, 0] for i in range(ncomponents)] if fit_gas else [0, 0]
     # tie_balmer = True if grating == "COMB" else False
     limit_doublets = False
 
@@ -336,64 +338,75 @@ def run_ppxf(spec, spec_err, lambda_vals_A,
     # This line only works if velscale_ratio = 1
     dv = (lambda_vals_ssp_log[0] - lambda_vals_log[0]) * constants.c / 1e3  # km/s
 
-    ##############################################################################
-    # Gas templates
-    ##############################################################################
-    # Construct a set of Gaussian emission line stars_templates_log.
-    # Estimate the wavelength fitted range in the rest frame.
-    gas_templates, gas_names, eline_lambdas = util.emission_lines(
-        logLam_temp=lambda_vals_ssp_log,
-        lamRange_gal=np.array([lambda_start_A, lambda_end_A]) / (1 + z),
-        FWHM_gal=FWHM_inst_A,
-        tie_balmer=tie_balmer,
-        limit_doublets=limit_doublets,
-        vacuum=False
-    )
 
     ##############################################################################
     # Merge templates so they can be input to pPXF
     ##############################################################################
-    # Combines the stellar and gaseous stars_templates_log into a single array.
-    # During the PPXF fit they will be assigned a different kinematic
-    # COMPONENT value
-    n_ssp_templates = stars_templates_log.shape[1]
-    # forbidden lines contain "[*]"
-    n_forbidden_lines = np.sum(["[" in a for a in gas_names])
-    n_balmer_lines = len(gas_names) - n_forbidden_lines
+    if fit_gas:
+        ##############################################################################
+        # Gas templates
+        ##############################################################################
+        # Construct a set of Gaussian emission line stars_templates_log.
+        # Estimate the wavelength fitted range in the rest frame.
+        gas_templates, gas_names, eline_lambdas = util.emission_lines(
+            logLam_temp=lambda_vals_ssp_log,
+            lamRange_gal=np.array([lambda_start_A, lambda_end_A]) / (1 + z),
+            FWHM_gal=FWHM_inst_A,
+            tie_balmer=tie_balmer,
+            limit_doublets=limit_doublets,
+            vacuum=False
+        )
+        # Combines the stellar and gaseous stars_templates into a single array.
+        # During the PPXF fit they will be assigned a different kinematic
+        # COMPONENT value
+        n_ssp_templates = stars_templates_log.shape[1]
+        # forbidden lines contain "[*]"
+        n_forbidden_lines = np.sum(["[" in a for a in gas_names])
+        n_balmer_lines = len(gas_names) - n_forbidden_lines
 
-    # Here, we lump together the Balmer + forbidden lines into a single kinematic component
-    if ncomponents == 3:
-        kinematic_components = [0] * n_ssp_templates + \
-            [1] * len(gas_names) + [2] * len(gas_names)
-    elif ncomponents == 4:
-        kinematic_components = [0] * n_ssp_templates + \
-            [1] * len(gas_names) + [2] * len(gas_names) + [3] * len(gas_names)
-    elif ncomponents == 2:
-        kinematic_components = [0] * n_ssp_templates + [1] * len(gas_names)
-    # gas_component=True for gas templates
-    gas_component = np.array(kinematic_components) > 0
+        # Here, we lump together the Balmer + forbidden lines into a single kinematic component
+        if ncomponents == 3:
+            kinematic_components = [0] * n_ssp_templates + \
+                [1] * len(gas_names) + [2] * len(gas_names)
+        elif ncomponents == 4:
+            kinematic_components = [0] * n_ssp_templates + \
+                [1] * len(gas_names) + [2] * len(gas_names) + [3] * len(gas_names)
+        elif ncomponents == 2:
+            kinematic_components = [0] * n_ssp_templates + [1] * len(gas_names)
 
-    # If the Balmer lines are tied one should allow for gas reddeining.
-    # The gas_reddening can be different from the stellar one, if both are fitted.
-    gas_reddening = 0 if tie_balmer else None
+        # If the Balmer lines are tied one should allow for gas reddeining.
+        # The gas_reddening can be different from the stellar one, if both are fitted.
+        gas_reddening = 0 if tie_balmer else None
 
-    # Combines the stellar and gaseous stars_templates_log into a single array.
-    # During the PPXF fit they will be assigned a different kinematic
-    # COMPONENT value
-    if ncomponents > 2:
-        if ngascomponents == 2:
-            gas_templates = np.concatenate((gas_templates, gas_templates), axis=1)
-            gas_names = np.concatenate((gas_names, gas_names))
-        if ngascomponents == 3:
-            gas_templates = np.concatenate((gas_templates, gas_templates, gas_templates), axis=1)
-            gas_names = np.concatenate((gas_names, gas_names, gas_names))
-        eline_lambdas = np.concatenate((eline_lambdas, eline_lambdas))
+        # Combines the stellar and gaseous stars_templates_log into a single array.
+        # During the PPXF fit they will be assigned a different kinematic
+        # COMPONENT value
+        if ncomponents > 2:
+            if ngascomponents == 2:
+                gas_templates = np.concatenate((gas_templates, gas_templates), axis=1)
+                gas_names = np.concatenate((gas_names, gas_names))
+            if ngascomponents == 3:
+                gas_templates = np.concatenate((gas_templates, gas_templates, gas_templates), axis=1)
+                gas_names = np.concatenate((gas_names, gas_names, gas_names))
+            eline_lambdas = np.concatenate((eline_lambdas, eline_lambdas))
 
-    gas_names_new = []
-    for ii in range(len(gas_names)):
-        gas_names_new.append(f"{gas_names[ii]} (component {kinematic_components[ii + n_ssp_templates]})")
-    gas_names = gas_names_new
-    templates = np.column_stack([stars_templates_log, gas_templates])
+        gas_names_new = []
+        for ii in range(len(gas_names)):
+            gas_names_new.append(f"{gas_names[ii]} (component {kinematic_components[ii + n_ssp_templates]})")
+        gas_names = gas_names_new
+        templates = np.column_stack([stars_templates_log, gas_templates])
+
+        # gas_component=True for gas templates
+        gas_component = np.array(kinematic_components) > 0
+
+    # Case: no gas templates
+    else:
+        n_ssp_templates = stars_templates_log.shape[1]
+        kinematic_components = [0] * n_ssp_templates
+        gas_names = None 
+        templates = stars_templates_log
+        gas_reddening = None
+        gas_component = None
 
     ##########################################################################
     # Mass-weighted ages
