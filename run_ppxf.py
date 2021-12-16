@@ -141,6 +141,7 @@ def run_ppxf(spec, spec_err, lambda_vals_A,
              bad_pixel_ranges_A=[],
              auto_adjust_regul=False, nthreads=20,
              delta_regul_min=5, regul_max=1e4,
+             delta_delta_chi2_min=1,
              interactive_mode=False,
              plotit=True, savefigs=False, fname_str="ppxftests"):
     """
@@ -150,23 +151,37 @@ def run_ppxf(spec, spec_err, lambda_vals_A,
     spec                Input spectrum to fit to, on a linear wavelength scale
     spec_err            Corresponding 1-sigma errors 
     lambda_vals_A       Wavelength values, in Angstroms
-    FWHM_inst_A         Instrumental resoltuion in Angstroms - defaults to WiFeS instrumental resolution for the B3000 grating
+    FWHM_inst_A         Instrumental resoltuion in Angstroms - defaults to WiFeS 
+                        instrumental resolution for the B3000 grating
     z                   Galaxy redshift
-    bad_pixel_ranges_A  Spectral regions to mask out (in Angstroms). format: [[lambda_1, lambda_2], ...]
-    ngascomponents      Number of kinematic components to be fitted to the emission lines
+    bad_pixel_ranges_A  Spectral regions to mask out (in Angstroms). 
+                        format: [[lambda_1, lambda_2], ...]
+    ngascomponents      Number of kinematic components to be fitted to the 
+                        emission lines
     
     isochrones          Set of isochrones to use - must be Padova or Geneva
     tie_balmer          If true, use the Ha/Hb ratio to measure gas reddening.
-    auto_adjust_regul   Whether to automatically determine the ideal "regul" value
-    nthreads            Number of threads to use for running simultaneous instances of ppxf
-    delta_regul_min     Minimum spacing in regularisation before the program exits (make it a larger value to speed up execution)
-    regul_max           Maximum regularisation value before the program gives up trying to find the minimum in regul space (make it a smaller value to speed up execution)
+    auto_adjust_regul   Whether to automatically determine the ideal "regul" 
+                        value
+    nthreads            Number of threads to use for running simultaneous 
+                        instances of ppxf
+    delta_regul_min     Minimum spacing in regularisation before the program 
+                        exits (make it a larger value to speed up execution)
+    regul_max           Maximum regularisation value before the program gives up 
+                        trying to find the minimum in regul space (make it a 
+                        smaller value to speed up execution)
+    delta_delta_chi2_min  
+                        Minimum value that Δχ (goal) - Δχ must reach to stop
+                        execution
 
-    plotit              Whether to show plots showing the evolution of the regul parameter & ppxf fits
+    plotit              Whether to show plots showing the evolution of the regul 
+                        parameter & ppxf fits
     savefigs            If true, save figs to multi-page pdfs 
-    fname_str           Filename prefix for figure pdfs: must include absolute path to directory.
+    fname_str           Filename prefix for figure pdfs: must include absolute 
+                        path to directory.
 
     """
+    np.seterr(divide = 'ignore')
 
     ##############################################################################
     # Set up plotting
@@ -174,6 +189,7 @@ def run_ppxf(spec, spec_err, lambda_vals_A,
     if plotit and savefigs:
         pdfpages_spec = PdfPages(f"{fname_str}_spec.pdf")
         pdfpages_regul = PdfPages(f"{fname_str}_regul.pdf")
+        pdfpages_sfh = PdfPages(f"{fname_str}_sfh.pdf")
 
     ##############################################################################
     # Set up the input spectrum
@@ -465,6 +481,7 @@ def run_ppxf(spec, spec_err, lambda_vals_A,
     ##########################################################################
     # Use pPXF to obtain the stellar age + metallicity, and fit emission lines
     ##########################################################################
+    ws = []  # List to store template weights from successive iterations 
     t = time()
     regul = 0
     delta_chi2_ideal = np.sqrt(2 * len(good_px))
@@ -483,10 +500,15 @@ def run_ppxf(spec, spec_err, lambda_vals_A,
                       quiet=True)
     delta_chi2 = (pp_age_met.chi2 - 1) * len(good_px)
     print("----------------------------------------------------")
-    print(F"Desired Delta Chi^2: {delta_chi2_ideal:.4g}")
-    print(F"Current Delta Chi^2: {delta_chi2:.4g}")
-    print("----------------------------------------------------")
-    print(F"Elapsed time in PPXF (single execution): {time() - t:.2f} s")
+    print(F"Iteration 0: Elapsed time in PPXF (single thread): {time() - t:.2f} s")
+
+    # Get the template weights from this fit 
+    w = compute_mass_weights(pp_age_met)
+    ws.append(w)
+    if w.shape[0] > 1:
+        w = np.nansum(w, axis=0)
+    else:
+        w = w.squeeze()
 
     if plotit:
         plt.close("all")
@@ -495,12 +517,35 @@ def run_ppxf(spec, spec_err, lambda_vals_A,
         fig.suptitle(f"First ppxf iteration: regul = 0")
         if savefigs:
             pdfpages_spec.savefig(fig, bbox_inches="tight")
+
+        # SFH change 
+        fig_sfh, axs_sfh = plt.subplots(nrows=2, ncols=1, figsize=(15, 10))
+        fig_sfh.subplots_adjust(hspace=0)
+        fig_sfh.suptitle(f"First ppxf iteration: regul = 0")
+        axs_sfh[0].step(x=range(len(w)), y=w, where="mid", label=f"Iteration 0")
+        axs_sfh[0].set_xlabel("Template age")
+        axs_sfh[0].set_ylabel(r"$\log_{10} (M_* [\rm M_\odot])$")
+        axs_sfh[0].set_yscale("log")
+        axs_sfh[0].set_ylim([10^0, None])
+        axs_sfh[0].autoscale(axis="x", enable=True, tight=True)
+        axs_sfh[0].grid()
+        axs_sfh[0].legend()
+
+        axs_sfh[1].axhline(0, color="gray")
+        axs_sfh[1].set_xticks(range(len(ages)))
+        axs_sfh[1].set_xticklabels([f"{age / 1e6}" for age in ages], rotation="vertical")
+        axs_sfh[1].autoscale(axis="x", enable=True, tight=True)
+        axs_sfh[1].grid()
+        fig_sfh.canvas.draw()
+        if savefigs:
+            pdfpages_sfh.savefig(fig_sfh, bbox_inches="tight")
+
         if matplotlib.get_backend() != "agg" and interactive_mode:
             hit_key_to_continue()
 
     if not auto_adjust_regul:
         # Run again but with regularization.
-        print(F"Scaling noise by {np.sqrt(pp_age_met.chi2):.4f}...")
+        print(F"Iteration 0: Scaling noise by {np.sqrt(pp_age_met.chi2):.4f}...")
         noise_scaling_factor = np.sqrt(pp_age_met.chi2)
         cnt = 1
 
@@ -532,6 +577,17 @@ def run_ppxf(spec, spec_err, lambda_vals_A,
             print("----------------------------------------------------")
             print(F"Elapsed time in PPXF: {time() - t:.2f} s")
 
+            # Compute the difference in the best fit between this & the last iteration
+            w = compute_mass_weights(pp_age_met)
+            ws.append(w)
+            if w.shape[0] > 1:
+                w = np.nansum(w, axis=0)
+                dw = np.abs(w - np.nansum(ws[-2], axis=0))
+            else:
+                w = w.squeeze()
+                dw = np.abs(w - ws[-2].squeeze())
+            delta_m = np.nansum(dw)
+
             if plotit:
                 plt.close("all")
                 plot_wrapper(pp_age_met)
@@ -539,6 +595,29 @@ def run_ppxf(spec, spec_err, lambda_vals_A,
                 fig.suptitle(f"Manually determining regul parameter: regul = {regul:.2f} (iteration {cnt})")
                 if savefigs:
                     pdfpages_spec.savefig(fig, bbox_inches="tight")
+
+                # Plot the updated SFH
+                fig_sfh.suptitle(f"Manually determining regul parameter: regul = {regul:.2f} (iteration {cnt})")
+                axs_sfh[0].step(x=range(len(w)), y=w, where="mid", label=f"Iteration {cnt}")
+                axs_sfh[0].set_ylim([10^0, None])
+                axs_sfh[0].autoscale(axis="x", enable=True, tight=True)
+                axs_sfh[0].grid()
+                axs_sfh[0].legend()
+
+                # Plot the difference in the SFH from the previous iteration
+                axs_sfh[1].clear()
+                axs_sfh[1].plot(range(len(w)), dw, "ko")
+                axs_sfh[1].set_yscale("log")
+                axs_sfh[1].set_ylabel("Percentage change from previous best fit")
+                axs_sfh[1].axhline(0, color="gray")
+                axs_sfh[1].set_xticks(range(len(ages)))
+                axs_sfh[1].set_xticklabels(["{:}".format(age / 1e6) for age in ages], rotation="vertical")
+                axs_sfh[1].text(s=f"Absolute mass difference: {delta_m:.2g} $M_\odot$", x=0.1, y=0.9, transform=axs_sfh[1].transAxes)
+                axs_sfh[1].autoscale(axis="x", enable=True, tight=True)
+                axs_sfh[1].grid()
+                fig_sfh.canvas.draw()
+                if savefigs:
+                    pdfpages_sfh.savefig(fig_sfh, bbox_inches="tight")
 
             while True:
                 key = input("Enter a new regul value, otherwise press enter: ")
@@ -551,7 +630,9 @@ def run_ppxf(spec, spec_err, lambda_vals_A,
             cnt += 1
     else:
         # Run again but with regularization.
-        print(F"Scaling noise by {np.sqrt(pp_age_met.chi2):.4f}...")
+        cnt = 1
+        print("----------------------------------------------------")
+        print(F"Iteration {cnt}: Scaling noise by {np.sqrt(pp_age_met.chi2):.4f}...")
         noise_scaling_factor = np.sqrt(pp_age_met.chi2)
 
         # Run ppxf a number of times & find the value of regul that minimises 
@@ -574,13 +655,13 @@ def run_ppxf(spec, spec_err, lambda_vals_A,
         ]
 
         # Run in parallel
-        print(f"Running ppxf on {nthreads} threads...")
+        print(f"Iteration {cnt}: Running ppxf on {nthreads} threads...")
         t = time()
         pool = multiprocessing.Pool(nthreads)
         pps = list(pool.map(ppxf_helper, args_list))
         pool.close()
         pool.join()
-        print(F"Elapsed time in PPXF (multithreaded): {time() - t:.2f} s")
+        print(F"Iteration {cnt}: Elapsed time in PPXF (multithreaded): {time() - t:.2f} s")
 
         # Determine which is the optimal regul value
         # Quite certain this is correct - see here: https://pypi.org/project/ppxf/#how-to-set-regularization
@@ -588,6 +669,20 @@ def run_ppxf(spec, spec_err, lambda_vals_A,
         delta_chi2_vals = [(p.chi2 - 1) * len(good_px) for p in pps]
         obj_vals = [np.abs(delta_chi2 - delta_chi2_ideal) for delta_chi2 in delta_chi2_vals]
         opt_idx = np.nanargmin(obj_vals)
+
+        # Compute the difference in the best fit between this & the last iteration
+        w = compute_mass_weights(pps[opt_idx])
+        ws.append(w)
+        if w.shape[0] > 1:
+            w = np.nansum(w, axis=0)
+            dw = np.abs(w - np.nansum(ws[-2], axis=0))
+        else:
+            w = w.squeeze()
+            dw = np.abs(w - ws[-2].squeeze())
+        delta_m = np.nansum(dw)
+
+        # Print info
+        print(f"Iteration {cnt}: optimal regul = {regul_vals[opt_idx]:.2f}; Δm = {delta_m:g}; Δregul = {delta_regul:.2f} (Δregul_min = {delta_regul_min:.2f}); Δχ (goal) - Δχ = {obj_vals[np.nanargmin(obj_vals)]:.3f}")
 
         if plotit:
             # Plot the best fit
@@ -610,27 +705,51 @@ def run_ppxf(spec, spec_err, lambda_vals_A,
             if savefigs:
                 pdfpages_regul.savefig(fig_regul, bbox_inches="tight")
 
+            # Plot the updated SFH
+            fig_sfh.suptitle(f"SFH evolution: regul = {regul_vals[opt_idx]:.2f}, " + r"$\Delta \chi_{\rm goal} - \Delta \chi$ =" + f"{obj_vals[opt_idx]:.2f} (iteration {1})")
+            axs_sfh[0].step(x=range(len(w)), y=w, where="mid", label=f"Iteration 1")
+            axs_sfh[0].set_ylim([10^0, None])
+            axs_sfh[0].autoscale(axis="x", enable=True, tight=True)
+            axs_sfh[0].grid()
+            axs_sfh[0].legend()
+
+            # Plot the difference in the SFH from the previous iteration
+            axs_sfh[1].clear()
+            axs_sfh[1].plot(range(len(w)), dw, "ko")
+            axs_sfh[1].set_yscale("log")
+            axs_sfh[1].set_ylabel("Percentage change from previous best fit")
+            axs_sfh[1].axhline(0, color="gray")
+            axs_sfh[1].set_xticks(range(len(ages)))
+            axs_sfh[1].set_xticklabels(["{:}".format(age / 1e6) for age in ages], rotation="vertical")
+            axs_sfh[1].text(s=f"Absolute mass difference: {delta_m:.2g} $M_\odot$", x=0.1, y=0.9, transform=axs_sfh[1].transAxes)
+            axs_sfh[1].autoscale(axis="x", enable=True, tight=True)
+            axs_sfh[1].grid()
+            fig_sfh.canvas.draw()
+            if savefigs:
+                pdfpages_sfh.savefig(fig_sfh, bbox_inches="tight")
+
             if matplotlib.get_backend() != "agg" and interactive_mode:
                 hit_key_to_continue()
 
         ###########
-        cnt = 2
         while True:
             # Once the regul sampling reachs 1, quit 
+            print("----------------------------------------------------")
             if delta_regul <= delta_regul_min:
-                print(f"Minimum spacing between regul values reached; using {regul_vals[opt_idx]:.2f} to produce the best fit ")
+                print(f"STOPPING: Minimum spacing between regul values reached; using {regul_vals[opt_idx]:.2f} to produce the best fit")
+                break
+            elif obj_vals[opt_idx] < delta_delta_chi2_min:
+                print(f"STOPPING: Convergence criterion reached; Δχ (goal) - Δχ = {obj_vals[opt_idx]}; using {regul_vals[opt_idx]:.2f} to produce the best fit")
                 break
             elif opt_idx == len(regul_vals) - 1 and regul_vals[opt_idx] >= regul_max:
-                print(f"Optimal regul value is >= 1e4; using {regul_vals[opt_idx]:.2f} to produce the best fit")
+                print(f"STOPPING: Optimal regul value is >= {regul_max}; using {regul_vals[opt_idx]:.2f} to produce the best fit")
                 break
-
             # If the lowest regul value is "maxed out" then try again with an array starting at the highest regul value
             elif regul_vals[opt_idx] == np.nanmax(regul_vals):
                 regul_span = np.nanmax(regul_vals) - np.nanmin(regul_vals)
                 regul_vals = np.linspace(np.nanmax(regul_vals),
                                          np.nanmax(regul_vals) + regul_span,
                                          nthreads + 1)
-
             # Otherwise, sub-sample the previous array windowed around the optimal value.
             else:
                 delta_regul /= 5
@@ -638,16 +757,10 @@ def run_ppxf(spec, spec_err, lambda_vals_A,
                                          regul_vals[opt_idx] + nthreads / 2 * delta_regul,
                                          nthreads + 1)
 
-            # Reset the values 
+            # Reset the values
             delta_regul = np.diff(regul_vals)[0]
 
-            ###########
-
-            # If opt_idx is the largest value, then re-run this bin with larger regul values.
-            
-            # while regul_vals[opt_idx] == np.nanmax(regul_vals) and np.nanmax(regul_vals) < 5e3:
-            # Input arguments
-            # regul_vals = np.linspace(np.nanmax(regul_vals), np.nanmax(regul_vals) + 500, nthreads + 1)
+            # Re-run ppxf
             args_list = [
                 [
                     templates, spec_log, spec_err_log, noise_scaling_factor,
@@ -659,13 +772,14 @@ def run_ppxf(spec, spec_err, lambda_vals_A,
             ]
 
             # Run in parallel
-            print(f"Re-running ppxf on {nthreads} threads (iteration {cnt})...")
+            cnt += 1
+            print(f"Iteration {cnt}: Re-running ppxf on {nthreads} threads (iteration {cnt})...")
             t = time()
             pool = multiprocessing.Pool(nthreads)
             pps = list(pool.map(ppxf_helper, args_list))
             pool.close()
             pool.join()
-            print(F"Elapsed time in PPXF (multithreaded): {time() - t:.2f} s")
+            print(F"Iteration {cnt}: Elapsed time in PPXF (multithreaded): {time() - t:.2f} s")
 
             # Determine which is the optimal regul value
             regul_vals = [p.regul for p in pps]  # Redefining as pool may not retain the order of the input list
@@ -673,6 +787,20 @@ def run_ppxf(spec, spec_err, lambda_vals_A,
             obj_vals = [np.abs(delta_chi2 - delta_chi2_ideal) for delta_chi2 in delta_chi2_vals]
             opt_idx = np.nanargmin(obj_vals)
             
+            # Compute the difference in the best fit between this & the last iteration
+            w = compute_mass_weights(pps[opt_idx])
+            ws.append(w)
+            if w.shape[0] > 1:
+                w = np.nansum(w, axis=0)
+                dw = np.abs(w - np.nansum(ws[-2], axis=0))
+            else:
+                w = w.squeeze()
+                dw = np.abs(w - ws[-2].squeeze())
+            delta_m = np.nansum(dw)
+
+            # Print info
+            print(f"Iteration {cnt}: optimal regul = {regul_vals[opt_idx]:.2f}; Δm = {delta_m:g}; Δregul = {delta_regul:.2f} (Δregul_min = {delta_regul_min:.2f}); Δχ (goal) - Δχ = {obj_vals[np.nanargmin(obj_vals)]:.3f}")
+
             # Plot the best fit
             if plotit:
                 plot_wrapper(pps[opt_idx])
@@ -690,13 +818,35 @@ def run_ppxf(spec, spec_err, lambda_vals_A,
                 ax_regul.set_xlabel("Regularisation parameter")
                 ax_regul.set_ylabel(r"$\Delta\chi_{\rm goal}^2 - \Delta\chi^2$")
                 ax_regul.legend()
+
+                # Plot the updated SFH
+                axs_sfh[0].step(x=range(len(w)), y=w, where="mid", label=f"Iteration {cnt}")
+                axs_sfh[0].set_ylim([10^0, None])
+                axs_sfh[0].autoscale(axis="x", enable=True, tight=True)
+                axs_sfh[0].grid()
+                axs_sfh[0].legend()
+
+                # Plot the difference in the SFH from the previous iteration
+                fig_sfh.suptitle(f"SFH evolution: regul = {regul_vals[opt_idx]:.2f}, " + r"$\Delta \chi_{\rm goal} - \Delta \chi$ =" + f"{obj_vals[opt_idx]:.2f} (iteration {cnt})")
+                axs_sfh[1].clear()
+                axs_sfh[1].plot(range(len(w)), dw, "ko")
+                axs_sfh[1].set_yscale("log")
+                axs_sfh[1].set_ylabel("Percentage change from previous best fit")
+                axs_sfh[1].axhline(0, color="gray")
+                axs_sfh[1].set_xticks(range(len(ages)))
+                axs_sfh[1].set_xticklabels(["{:}".format(age / 1e6) for age in ages], rotation="vertical")
+                axs_sfh[1].text(s=f"Absolute mass difference: {delta_m:.2g} $M_\odot$", x=0.1, y=0.9, transform=axs_sfh[1].transAxes)
+                axs_sfh[1].autoscale(axis="x", enable=True, tight=True)
+                axs_sfh[1].grid()
+                fig_sfh.canvas.draw()
+                if savefigs:
+                    pdfpages_sfh.savefig(fig_sfh, bbox_inches="tight")
+
                 if savefigs:
                     pdfpages_regul.savefig(fig_regul, bbox_inches="tight")
 
                 if matplotlib.get_backend() != "agg" and interactive_mode:
                     hit_key_to_continue()
-
-            cnt += 1
 
         pp_age_met = pps[opt_idx]
 
@@ -704,8 +854,8 @@ def run_ppxf(spec, spec_err, lambda_vals_A,
     # Template weights
     ##########################################################################
     weights_age_met = pp_age_met.weights
-    weights_age_met = np.reshape(
-        weights_age_met[~gas_component], (N_metallicities, N_ages))
+    weights_age_met = np.reshape(weights_age_met[~pp_age_met.gas_component], 
+                                 (N_metallicities, N_ages))
     weights_age_met /= np.nansum(weights_age_met)
 
     ##########################################################################
@@ -718,6 +868,7 @@ def run_ppxf(spec, spec_err, lambda_vals_A,
         pdfpages_spec.savefig(fig, bbox_inches="tight")
         pdfpages_spec.close()
         pdfpages_regul.close()
+        pdfpages_sfh.close()
 
     return pp_age_met, compute_mass_weights(pp_age_met)
 
@@ -796,4 +947,7 @@ if __name__ == "__main__":
     ax.set_xticks(range(len(ages)))
     ax.set_xlabel("Age (Myr)")
     ax.set_xticklabels(["{:}".format(age / 1e6) for age in ages], rotation="vertical")
+    axs_sfh[1].autoscale(axis="x", enable=True, tight=True)
+    axs_sfh[1].grid()
+    fig_sfh.canvas.draw()
 
