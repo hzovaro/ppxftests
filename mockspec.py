@@ -12,6 +12,7 @@ import ppxf.ppxf_util as util
 
 from cosmocalc import get_dist
 from ppxftests.ppxf_plot import plot_sfh_mass_weighted
+from ppxftests.ssputils import load_ssp_templates
 
 import matplotlib.pyplot as plt
 plt.ion()
@@ -19,36 +20,11 @@ plt.close("all")
 
 ###############################################################################
 # Paths 
-ssp_template_path = "/home/u5708159/python/Modules/ppxftests/SSP_templates"
-
-N_AGES_PADOVA = 74
-N_MET_PADOVA = 3
-N_AGES_GENEVA = 46
-N_MET_GENEVA = 5
 FWHM_WIFES_INST_A = 1.4
 
 ###############################################################################
-# Get age & metallicity arrays
-def get_age_and_metallicity_values(isochrones):
-    assert isochrones == "Geneva" or isochrones == "Padova",\
-        "isochrones must be either Padova or Geneva!"
-    ssp_template_fnames = [os.path.join(ssp_template_path, f"SSP{isochrones}", f) for f in os.listdir(os.path.join(ssp_template_path, f"SSP{isochrones}")) if f.endswith(".npz")]
-    metallicities = []
-    ages = []
-    for ssp_template_fname in ssp_template_fnames:
-        f = np.load(os.path.join(ssp_template_path, ssp_template_fname))
-        metallicities.append(f["metallicity"].item())
-        ages = f["ages"] if ages == [] else ages
-        lambda_vals_ssp_linear = f["lambda_vals_A"]
-
-    metallicities = np.array(metallicities)
-    ages = np.array(ages)
-
-    return ages, metallicities
-
-###############################################################################
 def create_mock_spectrum(sfh_mass_weighted, isochrones, sigma_star_kms, z, SNR,
-                         plotit=True):
+                         metals_to_use=None, plotit=True):
     
     """
     Create a mock spectrum given an input star formation history, stellar 
@@ -61,6 +37,9 @@ def create_mock_spectrum(sfh_mass_weighted, isochrones, sigma_star_kms, z, SNR,
                             weights should be in units of solar masses.
     isochrones              which set of isochrones to use; must be either 
                             Padova or Geneva 
+    metals_to_use           List of template metallicities (in string form) to
+                            assume in the mock spectrum. If None, then use 
+                            all of the available metallicities.
     sigma_star_kms          stellar velocity dispersion, in km/s
     z                       redshift
     SNR                     Assumed signal-to-noise ratio in the outoput 
@@ -71,13 +50,25 @@ def create_mock_spectrum(sfh_mass_weighted, isochrones, sigma_star_kms, z, SNR,
                             units of erg/s. 
 
     """
-
-    assert isochrones == "Padova" or isochrones == "Geneva",\
+    assert isochrones == "Geneva" or isochrones == "Padova",\
         "isochrones must be either Padova or Geneva!"
-    N_metallicities = N_MET_PADOVA if isochrones == "Padova" else N_MET_GENEVA
-    N_ages = N_AGES_PADOVA if isochrones == "Padova" else N_AGES_GENEVA
-    assert sfh_mass_weighted.shape == (N_metallicities, N_ages),\
-        f"sfh_mass_weighted must have dimensions ({N_metallicities}, {N_ages})!"
+    if isochrones == "Padova":
+        if metals_to_use is None:
+            metals_to_use = ['004', '008', '019']
+        else:
+            for m in metals_to_use:
+                assert m in ['004', '008', '019'],\
+                    f"Metallicity {m} for the {isochrones} isochrones not found!"
+    elif isochrones == "Geneva":
+        if metals_to_use is None:
+            metals_to_use = ['001', '004', '008', '020', '040']
+        else:
+            for m in metals_to_use:
+                assert m in ['001', '004', '008', '020', '040'],\
+                    f"Metallicity {m} for the {isochrones} isochrones not found!"
+    N_metallicities, N_ages = sfh_mass_weighted.shape
+    assert N_metallicities == len(metals_to_use),\
+        f"sfh_mass_weighted.shape[0] = {N_metallicities} but len(metals_to_use) = {len(metals_to_use)}!"
 
     ###########################################################################
     # WIFES Instrument properties
@@ -105,40 +96,11 @@ def create_mock_spectrum(sfh_mass_weighted, isochrones, sigma_star_kms, z, SNR,
                            np.zeros(N_lambda_wifes * oversample_factor))
 
     ###########################################################################
-    # Load the templates 
+    # Load stellar templates
     ###########################################################################
-    # List of template names - one for each metallicity
-    ssp_template_fnames =\
-        [os.path.join(ssp_template_path, f"SSP{isochrones}", f) for f in os.listdir(os.path.join(ssp_template_path, f"SSP{isochrones}")) if f.endswith(".npz")]
-
-    ###########################################################################
-    # Determine how many different templates there are (i.e. N_ages x N_metallicities)
-    metallicities = []
-    ages = []
-    for ssp_template_fname in ssp_template_fnames:
-        f = np.load(os.path.join(ssp_template_path, ssp_template_fname))
-        metallicities.append(f["metallicity"].item())
-        ages = f["ages"] if ages == [] else ages
-        lambda_vals_ssp_linear = f["lambda_vals_A"]
-
-    # Template dimensions
-    N_ages = len(ages)
-    N_metallicities = len(metallicities)
-    N_lambda = len(lambda_vals_ssp_linear)
-
-    ###########################################################################
-    # Create a big 3D array to hold the spectra
-    spec_arr_linear = np.zeros((N_metallicities, N_ages, N_lambda))
-
-    for mm, ssp_template_fname in enumerate(ssp_template_fnames):
-        f = np.load(os.path.join(ssp_template_path, ssp_template_fname))
-        
-        # Get the spectra & wavelength values
-        spectra_ssp_linear = f["L_vals"]
-        lambda_vals_ssp_linear = f["lambda_vals_A"]
-
-        # Store in the big array 
-        spec_arr_linear[mm, :, :] = spectra_ssp_linear.T
+    stellar_templates_linear, lambda_vals_ssp_linear, metallicities, ages =\
+        load_ssp_templates(isochrones, metals_to_use)
+    # Note: stellar_templates_linear has shape (N_lambda, N_metallicities, N_ages)
 
     ###########################################################################
     # Create the mock spectrum
@@ -148,7 +110,7 @@ def create_mock_spectrum(sfh_mass_weighted, isochrones, sigma_star_kms, z, SNR,
     fig_h = 5
 
     # 1. Sum the templates by their weights to create a single spectrum
-    spec_linear = np.nansum(np.nansum(sfh_mass_weighted[:, :, None] * spec_arr_linear, axis=0), axis=0)
+    spec_linear = np.nansum(np.nansum(sfh_mass_weighted[None, :, :] * stellar_templates_linear, axis=1), axis=1)
 
     # Plot to check
     if plotit:
@@ -157,11 +119,11 @@ def create_mock_spectrum(sfh_mass_weighted, isochrones, sigma_star_kms, z, SNR,
         for mm, aa in product(range(N_metallicities), range(N_ages)):
             w = sfh_mass_weighted[mm, aa]
             if w > 0:
-                ax.plot(lambda_vals_ssp_linear, spec_arr_linear[mm, aa, :] * w, 
+                ax.plot(lambda_vals_ssp_linear, stellar_templates_linear[:, mm, aa] * w, 
                         label=f"t = {ages[aa] / 1e6:.2f} Myr, m = {metallicities[mm]:.4f}, w = {w:g}")
         ax.set_ylabel(f"$L$ (erg/s/$\AA$/M$_\odot$)")
         ax.set_xlabel(f"$\lambda$")
-        ax.legend()
+        # ax.legend()
         ax.autoscale(enable="True", axis="x", tight=True)
 
     ###########################################################################
@@ -244,8 +206,6 @@ if __name__ == "__main__":
     # Mock spectra options
     ###########################################################################
     isochrones = "Padova"  # Set of isochrones to use 
-    N_metallicities = N_MET_PADOVA if isochrones == "Padova" else N_MET_GENEVA
-    N_ages = N_AGES_PADOVA if isochrones == "Padova" else N_AGES_GENEVA
     
     ###########################################################################
     # GALAXY PROPERTIES
@@ -259,7 +219,7 @@ if __name__ == "__main__":
     ###########################################################################
     # Idea 1: use a Gaussian kernel to smooth "delta-function"-like SFHs
     # Idea 2: are the templates logarithmically spaced in age? If so, could use e.g. every 2nd template 
-    sfh_mass_weighted = np.zeros((N_metallicities, N_ages))
+    sfh_mass_weighted = np.zeros((3, 74))
     sfh_mass_weighted[1, 10] = 1e7
     sfh_mass_weighted[2, 60] = 1e10
 
