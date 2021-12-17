@@ -11,6 +11,8 @@ from itertools import product
 import ppxf.ppxf_util as util
 
 from cosmocalc import get_dist
+from spaxelsleuth.plotting.plotgrids import load_HII_grid, load_AGN_grid
+
 from ppxftests.ppxf_plot import plot_sfh_mass_weighted
 from ppxftests.ssputils import load_ssp_templates
 
@@ -18,12 +20,27 @@ import matplotlib.pyplot as plt
 plt.ion()
 plt.close("all")
 
-###############################################################################
-# Paths 
+from IPython.core.debugger import Tracer
+
 FWHM_WIFES_INST_A = 1.4
 
 ###############################################################################
+def get_wavelength_from_velocity(lambda_rest, v, units):
+    assert units == 'm/s' or units == 'km/s', "units must be m/s or km/s!"
+    assert isinstance(v, (np.floating, float)) or type(v) == int \
+        or type(v) == np.ndarray, "v must be an int, float or a Numpy array!"
+    if units == 'm/s':
+        v_m_s = v
+    elif units == 'km/s':
+        v_m_s = v * 1e3
+    lambda_obs = lambda_rest * np.sqrt((1 + v_m_s / constants.c) /
+                                       (1 - v_m_s / constants.c))
+    return lambda_obs
+
+###############################################################################
 def create_mock_spectrum(sfh_mass_weighted, isochrones, sigma_star_kms, z, SNR,
+                         ngascomponents=0, sigma_gas_kms=[], v_gas_kms=[], 
+                         eline_model=[], L_Ha_erg_s=[], 
                          metals_to_use=None, plotit=True):
     
     """
@@ -45,6 +62,24 @@ def create_mock_spectrum(sfh_mass_weighted, isochrones, sigma_star_kms, z, SNR,
     SNR                     Assumed signal-to-noise ratio in the outoput 
                             spectrum.
 
+    ngascomponents          Number of kinematic components in the emission 
+                            lines. Set to 0 if no emission lines are to be 
+                            included (default).
+    sigma_gas_kms           List of velocity dispersions for each kinematic 
+                            component in the emission lines. Must have length
+                            equal to ngascomponents.
+    v_gas_kms               List of radial velocities for each kinematic 
+                            component in the emission lines. Must have length
+                            equal to ngascomponents.
+    eline_model             Photoionisation source to assume for the emission
+                            lines. Options are "HII" for a typical high-Z
+                            star-forming galaxy and "AGN" for a typical 
+                            high-Z NLR. Must have length equal to 
+                            ngascomponents.
+    L_Ha_erg_s              Total Halpha emission line luminosity for each 
+                            component in the emission lines. Must have length
+                            equal to ngascomponents.
+
     Returns:
     spec, spec_err          mock spectrum and corresponding 1-sigma errors, in
                             units of erg/s. 
@@ -54,21 +89,33 @@ def create_mock_spectrum(sfh_mass_weighted, isochrones, sigma_star_kms, z, SNR,
         "isochrones must be either Padova or Geneva!"
     if isochrones == "Padova":
         if metals_to_use is None:
-            metals_to_use = ['004', '008', '019']
+            metals_to_use = ["004", "008", "019"]
         else:
             for m in metals_to_use:
-                assert m in ['004', '008', '019'],\
+                assert m in ["004", "008", "019"],\
                     f"Metallicity {m} for the {isochrones} isochrones not found!"
     elif isochrones == "Geneva":
         if metals_to_use is None:
-            metals_to_use = ['001', '004', '008', '020', '040']
+            metals_to_use = ["001", "004", "008", "020", "040"]
         else:
             for m in metals_to_use:
-                assert m in ['001', '004', '008', '020', '040'],\
+                assert m in ["001", "004", "008", "020", "040"],\
                     f"Metallicity {m} for the {isochrones} isochrones not found!"
     N_metallicities, N_ages = sfh_mass_weighted.shape
     assert N_metallicities == len(metals_to_use),\
         f"sfh_mass_weighted.shape[0] = {N_metallicities} but len(metals_to_use) = {len(metals_to_use)}!"
+
+    if ngascomponents > 0:
+        assert len(sigma_gas_kms) == ngascomponents,\
+            "len(sigma_gas_kms) must be equal to ngascomponents!"
+        assert len(v_gas_kms) == ngascomponents,\
+            "len(v_gas_kms) must be equal to ngascomponents!"
+        assert len(L_Ha_erg_s) == ngascomponents,\
+            "len(L_Ha_erg_s) must be equal to ngascomponents!"
+        assert len(eline_model) == ngascomponents,\
+            "len(eline_model) must be equal to ngascomponents!"
+        assert np.all([m in ["HII", "AGN", "BLR"] for m in eline_model]),\
+            "entries in eline_model must be either 'HII', 'AGN' or 'BLR'!"
 
     ###########################################################################
     # WIFES Instrument properties
@@ -152,8 +199,117 @@ def create_mock_spectrum(sfh_mass_weighted, isochrones, sigma_star_kms, z, SNR,
         ax.set_title("LOSVD kernel")
 
     ###########################################################################
-    # 4. Convolve the LOSVD kernel with the mock spectrum
+    # 4a. Convolve the LOSVD kernel with the mock spectrum
     spec_log_conv = convolve(spec_log, kernel_losvd, mode="same") / np.nansum(kernel_losvd)
+
+    ###########################################################################
+    # 4b. Add emission lines, if needed
+    if ngascomponents > 0:
+        spec_log_lines = np.zeros(spec_log_conv.shape)
+        if plotit:
+            fig, ax = plt.subplots(nrows=1, ncols=1, figsize=(fig_w, fig_h))
+            ax.plot(np.exp(lambda_vals_ssp_log), spec_log_conv, color="black", label="Stellar continuum only")
+ 
+        eline_lambdas_A = {
+            "NeV3347": 3346.79,
+            "OIII3429": 3429.0,
+            "OII3726": 3726.032,
+            "OII3729": 3728.815,
+            "NeIII3869": 3869.060,
+            "HeI3889": 3889.0,
+            "CaII H": 3969.0,
+            "CaII K": 3934.0,
+            "HEPSILON": 3970.072,
+            "HDELTA": 4101.734, 
+            "HGAMMA": 4340.464, 
+            "HeI4471": 4471.479,
+            "OIII4363": 4363.210, 
+            "HBETA": 4861.325, 
+            "OIII4959": 4958.911, 
+            "OIII5007": 5006.843, 
+            "HeI5876": 5875.624, 
+            "OI6300": 6300.304, 
+            "SIII6312": 6312.060,
+            "OI6364": 6363.776,
+            "NII6548": 6548.04, 
+            "HALPHA": 6562.800, 
+            "NII6583": 6583.460,
+            "SII6716": 6716.440, 
+            "SII6731": 6730.810,
+        }
+
+        for nn in range(ngascomponents):
+            # Load a MAPPINGS grid
+            if eline_model[nn] == "BLR":
+                # For a broad line region, just add the Halpha, Hbeta and [OIII].
+                # Reference for Ha/Hb ratios in BLRs: 
+                #   https://ui.adsabs.harvard.edu/abs/2016MNRAS.462.3570S/abstract
+                # See section 4.2 for Halpha/Hbeta line ratios 
+                # See section 3.4 for [OIII]/Hbeta line ratios
+                for eline, A in zip(["HALPHA", 
+                                     "HBETA", 
+                                     "OIII5007", 
+                                     "OIII4959"], 
+                                    [L_Ha_erg_s[nn], 
+                                     L_Ha_erg_s[nn] / 3, 
+                                     L_Ha_erg_s[nn] / 10, 
+                                     L_Ha_erg_s[nn] / 30]):
+
+                    # Compute the central wavelength & width from the velocity & velocity dispersion
+                    sigma_gas_A = sigma_gas_kms[nn] * eline_lambdas_A[eline] / (constants.c / 1e3)
+                    lambda_gas_A = get_wavelength_from_velocity(lambda_rest=eline_lambdas_A[eline],
+                                                                v=v_gas_kms[nn],
+                                                                units='km/s')
+
+                    # Define a Gaussian
+                    line = A * np.exp( -(np.exp(lambda_vals_ssp_log) - lambda_gas_A)**2 / (2 * sigma_gas_A))
+
+                    # Add to spectrum
+                    spec_log_lines += line
+
+                break 
+
+            elif eline_model[nn] == "HII":
+                grid_df = load_HII_grid()
+                cond = grid_df["Nebular abundance (Z/Zsun)"] == 2.0
+                cond &= grid_df["log(U) (inner)"] == -3
+                cond &= grid_df["log(P/k)"] == 5.0
+            elif eline_model[nn] == "AGN":
+                grid_df = load_AGN_grid()
+                cond = grid_df["Nebular abundance (Z/Zsun)"] == 2.0
+                cond &= grid_df["log(U) (inner)"] == -2.0
+                cond &= grid_df["log(P/k)"] == 6.0
+                cond &= grid_df["E_peak (log_10(keV))"] == -1.5
+
+            eline_list = [e for e in eline_lambdas_A if e in grid_df.columns]
+            for eline in eline_list:
+                # Compute the central wavelength & width from the velocity & velocity dispersion
+                sigma_gas_A = sigma_gas_kms[nn] * eline_lambdas_A[eline] / (constants.c / 1e3)
+                lambda_gas_A = get_wavelength_from_velocity(lambda_rest=eline_lambdas_A[eline],
+                                                            v=v_gas_kms[nn],
+                                                            units='km/s')
+
+                # Determine the strength of the line
+                # NOTE: 10^41 erg s^-1 corresponds to a SFR of ~0.5 Msun/yr
+                L_Hb_erg_s = L_Ha_erg_s[nn] * grid_df.loc[cond, "HBETA"].values[0] / grid_df.loc[cond, "HALPHA"].values[0]
+                A = grid_df.loc[cond, eline].values[0] * L_Hb_erg_s
+
+                # Define a Gaussian
+                line = A * np.exp( -(np.exp(lambda_vals_ssp_log) - lambda_gas_A)**2 / (2 * sigma_gas_A))
+
+                # Add to spectrum
+                spec_log_lines += line
+
+        # Add to spectrum
+        spec_log_conv += spec_log_lines
+
+        if plotit:
+            ax.plot(np.exp(lambda_vals_ssp_log), spec_log_lines, color="green", label="Emission lines")
+            ax.plot(np.exp(lambda_vals_ssp_log), spec_log_conv, color="red", label="With emission lines")
+            ax.set_ylabel(f"$L$ (erg/s/$\AA$/M$_\odot$)")
+            ax.set_xlabel(f"$\lambda$")
+            ax.legend()
+            ax.autoscale(enable="True", axis="x", tight=True)
 
     ###########################################################################
     # 5. Apply the redshift 
@@ -226,6 +382,12 @@ if __name__ == "__main__":
     ###########################################################################
     # CREATE THE MOCK SPECTRUM
     ###########################################################################
-    spec, spec_err, lambda_valsA = create_mock_spectrum(sfh_mass_weighted=sfh_mass_weighted,
-                                          isochrones=isochrones,
-                                          z=z, SNR=SNR, sigma_star_kms=sigma_star_kms)    
+    spec, spec_err, lambda_valsA = create_mock_spectrum(
+        sfh_mass_weighted=sfh_mass_weighted,
+        isochrones=isochrones,
+        ngascomponents=3, 
+        sigma_gas_kms=[40, 350, 1e4], v_gas_kms=[0, 0, -1000], 
+        L_Ha_erg_s=[1e41, 1e40, 0.5e40], eline_model=["HII", "AGN", "BLR"],
+        z=z, SNR=SNR, sigma_star_kms=sigma_star_kms,
+        plotit=True)
+

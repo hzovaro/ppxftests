@@ -29,9 +29,9 @@ from ppxf.ppxf import ppxf
 import ppxf.ppxf_util as util
 
 from cosmocalc import get_dist
-from ppxftests.mockspec import load_ssp_templates
 from log_rebin_errors import log_rebin_errors
 
+from ppxftests.ssputils import load_ssp_templates
 from ppxftests.mockspec import FWHM_WIFES_INST_A
 from ppxftests.ppxf_plot import ppxf_plot, plot_sfh_mass_weighted
 
@@ -129,64 +129,6 @@ def ppxf_helper(args):
 
     # Return
     return pp_age_met
-
-###############################################################################
-# Convenience function for loading stellar templates
-############################################################################## 
-def load_ssp_templates(isochrones, metals_to_use):
-    # Input checking
-    assert isochrones == "Geneva" or isochrones == "Padova",\
-        "isochrones must be either Padova or Geneva!"
-    if isochrones == "Padova":
-        if metals_to_use is None:
-            metals_to_use = ['004', '008', '019']
-        else:
-            for m in metals_to_use:
-                assert m in ['004', '008', '019'],\
-                    f"Metallicity {m} for the {isochrones} isochrones not found!"
-    elif isochrones == "Geneva":
-        if metals_to_use is None:
-            metals_to_use = ['001', '004', '008', '020', '040']
-        else:
-            for m in metals_to_use:
-                assert m in ['001', '004', '008', '020', '040'],\
-                    f"Metallicity {m} for the {isochrones} isochrones not found!"
-
-    ###########################################################################
-    # List of template names - one for each metallicity
-    ssp_template_path = "/home/u5708159/python/Modules/ppxftests/SSP_templates"
-    ssp_template_fnames = [f"SSP{isochrones}.z{m}.npz" for m in metals_to_use]
-
-    ###########################################################################
-    # Determine how many different templates there are (i.e. N_ages x N_metallicities)
-    metallicities = []
-    ages = []
-    for ssp_template_fname in ssp_template_fnames:
-        f = np.load(os.path.join(ssp_template_path, f"SSP{isochrones}", ssp_template_fname))
-        metallicities.append(f["metallicity"].item())
-        ages = f["ages"] if ages == [] else ages
-        lambda_vals_linear = f["lambda_vals_A"]
-
-    # Template dimensions
-    N_ages = len(ages)
-    N_metallicities = len(metallicities)
-    N_lambda = len(lambda_vals_linear)
-
-    ###########################################################################
-    # Create a big 3D array to hold the spectra
-    spec_arr_linear = np.zeros((N_lambda, N_metallicities, N_ages))
-
-    for mm, ssp_template_fname in enumerate(ssp_template_fnames):
-        f = np.load(os.path.join(ssp_template_path, f"SSP{isochrones}", ssp_template_fname))
-        
-        # Get the spectra & wavelength values
-        spectra_ssp_linear = f["L_vals"]
-        lambda_vals_linear = f["lambda_vals_A"]
-
-        # Store in the big array 
-        spec_arr_linear[:, mm, :] = spectra_ssp_linear
-
-    return spec_arr_linear, lambda_vals_linear, metallicities, metallicities
 
 ##############################################################################
 # START FUNCTION DEFINITION
@@ -346,7 +288,7 @@ def run_ppxf(spec, spec_err, lambda_vals_A,
     N_lambda_ssp_linear = len(lambda_vals_ssp_linear)
     reg_dim = (N_metallicities, N_ages)
 
-    # Reshape spec_arr_linear so that its dimensions are (N_lambda, N_ages * N_metallicities)
+    # Reshape stellar templates so that its dimensions are (N_lambda, N_ages * N_metallicities)
     stellar_templates_linear =\
         stellar_templates_linear.reshape((N_lambda_ssp_linear, N_ages * N_metallicities))
 
@@ -377,10 +319,10 @@ def run_ppxf(spec, spec_err, lambda_vals_A,
         stellar_templates_log[:, ii] = spec_ssp_log
 
     # Normalise
-    stellar_templates_log /= np.nanmedian(stellar_templates_log, axis=0)
-
-    # Store stellar template norms 
     stellar_template_norms = np.nanmedian(stellar_templates_log, axis=0)
+    stellar_templates_log /= stellar_template_norms
+
+    # Reshape
     stellar_template_norms = np.reshape(stellar_template_norms, (N_metallicities, N_ages))
 
     # This line only works if velscale_ratio = 1
@@ -879,20 +821,20 @@ def run_ppxf(spec, spec_err, lambda_vals_A,
                 if matplotlib.get_backend() != "agg" and interactive_mode:
                     hit_key_to_continue()
 
-        pp_age_met = pps[opt_idx]
+        pp = pps[opt_idx]
 
     ##########################################################################
-    # Template weights
+    # Add some extra useful stuff to the ppxf instance
     ##########################################################################
-    weights_age_met = pp_age_met.weights
-    weights_age_met = np.reshape(weights_age_met[~pp_age_met.gas_component], 
-                                 (N_metallicities, N_ages))
-    weights_age_met /= np.nansum(weights_age_met)
+    pp.weights_mass_weighted = compute_mass_weights(pp)  # Mass-weighted template weights
+    pp.weights_light_weighted = np.reshape(pp.weights[~pp.gas_component], (N_metallicities, N_ages))
+    pp.norm = norm  # Normalisation factor for the logarithmically binned input spectrum
+    pp.stellar_template_norms = stellar_template_norms  # Normalisation factors for the logarithmically binned stellar templates
 
     ##########################################################################
     # Plotting the fit
     ##########################################################################
-    plot_wrapper(pp_age_met)
+    plot_wrapper(pp)
     fig = plt.gcf()
     fig.suptitle(f"Best fit (regul = {regul_vals[opt_idx]:.2f})")
     if savefigs:
@@ -901,7 +843,7 @@ def run_ppxf(spec, spec_err, lambda_vals_A,
         pdfpages_regul.close()
         pdfpages_sfh.close()
 
-    return pp_age_met, compute_mass_weights(pp_age_met)
+    return pp
 
 ###############################################################################
 #%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
