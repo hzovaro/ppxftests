@@ -29,6 +29,7 @@ from ppxf.ppxf import ppxf
 import ppxf.ppxf_util as util
 
 from cosmocalc import get_dist
+from ppxftests.mockspec import load_ssp_templates
 from log_rebin_errors import log_rebin_errors
 
 from ppxftests.mockspec import FWHM_WIFES_INST_A
@@ -129,6 +130,64 @@ def ppxf_helper(args):
     # Return
     return pp_age_met
 
+###############################################################################
+# Convenience function for loading stellar templates
+############################################################################## 
+def load_ssp_templates(isochrones, metals_to_use):
+    # Input checking
+    assert isochrones == "Geneva" or isochrones == "Padova",\
+        "isochrones must be either Padova or Geneva!"
+    if isochrones == "Padova":
+        if metals_to_use is None:
+            metals_to_use = ['004', '008', '019']
+        else:
+            for m in metals_to_use:
+                assert m in ['004', '008', '019'],\
+                    f"Metallicity {m} for the {isochrones} isochrones not found!"
+    elif isochrones == "Geneva":
+        if metals_to_use is None:
+            metals_to_use = ['001', '004', '008', '020', '040']
+        else:
+            for m in metals_to_use:
+                assert m in ['001', '004', '008', '020', '040'],\
+                    f"Metallicity {m} for the {isochrones} isochrones not found!"
+
+    ###########################################################################
+    # List of template names - one for each metallicity
+    ssp_template_path = "/home/u5708159/python/Modules/ppxftests/SSP_templates"
+    ssp_template_fnames = [f"SSP{isochrones}.z{m}.npz" for m in metals_to_use]
+
+    ###########################################################################
+    # Determine how many different templates there are (i.e. N_ages x N_metallicities)
+    metallicities = []
+    ages = []
+    for ssp_template_fname in ssp_template_fnames:
+        f = np.load(os.path.join(ssp_template_path, f"SSP{isochrones}", ssp_template_fname))
+        metallicities.append(f["metallicity"].item())
+        ages = f["ages"] if ages == [] else ages
+        lambda_vals_linear = f["lambda_vals_A"]
+
+    # Template dimensions
+    N_ages = len(ages)
+    N_metallicities = len(metallicities)
+    N_lambda = len(lambda_vals_linear)
+
+    ###########################################################################
+    # Create a big 3D array to hold the spectra
+    spec_arr_linear = np.zeros((N_lambda, N_metallicities, N_ages))
+
+    for mm, ssp_template_fname in enumerate(ssp_template_fnames):
+        f = np.load(os.path.join(ssp_template_path, f"SSP{isochrones}", ssp_template_fname))
+        
+        # Get the spectra & wavelength values
+        spectra_ssp_linear = f["L_vals"]
+        lambda_vals_linear = f["lambda_vals_A"]
+
+        # Store in the big array 
+        spec_arr_linear[:, mm, :] = spectra_ssp_linear
+
+    return spec_arr_linear, lambda_vals_linear, metallicities, metallicities
+
 ##############################################################################
 # START FUNCTION DEFINITION
 ##############################################################################
@@ -149,7 +208,7 @@ def run_ppxf(spec, spec_err, lambda_vals_A,
 
     Inputs:
     spec                Input spectrum to fit to, on a linear wavelength scale
-    spec_err            Corresponding 1-sigma errors 
+    spec_err            Corresponding 1-sigma_diff_px errors 
     lambda_vals_A       Wavelength values, in Angstroms
     FWHM_inst_A         Instrumental resoltuion in Angstroms - defaults to WiFeS 
                         instrumental resolution for the B3000 grating
@@ -253,8 +312,6 @@ def run_ppxf(spec, spec_err, lambda_vals_A,
                 assert m in ['001', '004', '008', '020', '040'],\
                     f"Metallicity {m} for the {isochrones} isochrones not found!"
 
-    ssp_template_path = f"/home/u5708159/python/Modules/ppxftests/SSP_templates/SSP{isochrones}"
-
     # pPXF parameters for the age & metallicity + gas fit
     adegree_age_met = -1     # Should be zero for age + metallicity fitting
     mdegree_age_met = 4     # Should be zero for kinematic fitting
@@ -275,86 +332,59 @@ def run_ppxf(spec, spec_err, lambda_vals_A,
     # SSP template parameters
     # Gonzalez-Delgado spectra_linear have a constant spectral sampling of 0.3 A.
     dlambda_A_ssp = 0.30
-    # Assuming that sigma = dlambda_A_ssp.
+    # Assuming that sigma_diff_px = dlambda_A_ssp.
     FWHM_ssp_A = 2 * np.sqrt(2 * np.log(2)) * dlambda_A_ssp
 
     ##############################################################################
     # SSP templates
     ##############################################################################
-    # Load the .npz containing the stellar spectra
-    ssp_template_fnames = [f"SSP{isochrones}.z{m}.npz" for m in metals_to_use]
-    N_metallicities = len(ssp_template_fnames)
+    # Load the SSP templates
+    stellar_templates_linear, lambda_vals_ssp_linear, metallicities, ages =\
+        load_ssp_templates(isochrones, metals_to_use)
+    N_metallicities = len(metallicities)
+    N_ages = len(ages)
+    N_lambda_ssp_linear = len(lambda_vals_ssp_linear)
+    reg_dim = (N_metallicities, N_ages)
 
-    # All stars_templates_log must have the same number of wavelength values &
-    # number of age bins!
-    stars_templates_log = []
-    stars_templates_linear = []
-    stellar_template_norms = []
-    metallicities = []
-    for ssp_template_fname in ssp_template_fnames:
-        f = np.load(os.path.join(ssp_template_path, ssp_template_fname))
-        metallicities.append(f["metallicity"].item())
-        ages = f["ages"]
-        spectra_ssp_linear = f["L_vals"]
-        lambda_vals_ssp_linear = f["lambda_vals_A"]
+    # Reshape spec_arr_linear so that its dimensions are (N_lambda, N_ages * N_metallicities)
+    stellar_templates_linear =\
+        stellar_templates_linear.reshape((N_lambda_ssp_linear, N_ages * N_metallicities))
 
-        # Extract the wavelength range and logarithmically rebin one spectrum
-        # to a velocity scale 2x smaller than the stellar template spectra_linear, to
-        # determine the size needed for the array which will contain the template
-        # spectra_linear.
-        spec_ssp_log, lambda_vals_ssp_log, velscale_temp = util.log_rebin(np.array(
-            [lambda_vals_ssp_linear[0], lambda_vals_ssp_linear[-1]]),
-            spectra_ssp_linear[:, 0], velscale=velscale)
-        stars_templates_log.append(np.empty((spec_ssp_log.size, len(ages))))
-        stars_templates_linear.append(np.empty((spectra_ssp_linear[:, 0].size,
-                                                len(ages))))
+    # Extract the wavelength range for the logarithmically rebinned templates
+    _, lambda_vals_ssp_log, _ = util.log_rebin(np.array(
+        [lambda_vals_ssp_linear[0], lambda_vals_ssp_linear[-1]]),
+        stellar_templates_linear[:, 0], velscale=velscale)
+    N_lambda_ssp_log = len(lambda_vals_ssp_log)
 
-        # Quadratic sigma difference in pixels Vazdekis --> SAURON
-        # The formula below is rigorously valid if the shapes of the
-        # instrumental spectral profiles are well approximated by Gaussians.
-        FWHM_diff_A = np.sqrt(FWHM_inst_A**2 - FWHM_ssp_A**2)
-        sigma = FWHM_diff_A / (2 * np.sqrt(2 * np.log(2))) / \
-            dlambda_A_ssp  # Sigma difference in pixels
-        N_ages = spectra_ssp_linear.shape[1]
-        for ii in range(N_ages):
-            spec_ssp_linear = spectra_ssp_linear[:, ii]
-            spec_ssp_linear = ndimage.gaussian_filter1d(spec_ssp_linear, sigma)
-            spec_ssp_log, lambda_vals_ssp_log, velscale_temp =\
-                util.log_rebin(np.array(
-                    [lambda_vals_ssp_linear[0], lambda_vals_ssp_linear[-1]]),
-                    spec_ssp_linear, velscale=velscale)
-            # Normalise templates
-            stars_templates_log[-1][:, ii] = spec_ssp_log / np.median(spec_ssp_log)
-            stars_templates_linear[-1][:, ii] = spec_ssp_linear / np.median(spec_ssp_linear)
+    # Create an array to store the logarithmically rebinned spectra in
+    stellar_templates_log = np.zeros((N_lambda_ssp_log, N_ages * N_metallicities))
 
-            stellar_template_norms.append(np.median(spec_ssp_log))
-    # Reshape
+    # Convolve each SSP template to the instrumental resolution
+    FWHM_diff_A = np.sqrt(FWHM_inst_A**2 - FWHM_ssp_A**2)
+    sigma_diff_px = FWHM_diff_A / (2 * np.sqrt(2 * np.log(2))) / dlambda_A_ssp  # sigma_diff_px difference in pixels
+    stars_templates_linear_conv = np.zeros(stellar_templates_linear.shape)
+    for ii in range(N_ages * N_metallicities):
+        # Convolve
+        stars_templates_linear_conv[:, ii] =\
+            ndimage.gaussian_filter1d(stellar_templates_linear[:, ii], sigma_diff_px)
+
+        # Logarithmically rebin
+        spec_ssp_log, lambda_vals_ssp_log, velscale_temp =\
+            util.log_rebin(np.array(
+                [lambda_vals_ssp_linear[0], lambda_vals_ssp_linear[-1]]),
+                stars_templates_linear_conv[:, ii],
+                velscale=velscale)
+        stellar_templates_log[:, ii] = spec_ssp_log
+
+    # Normalise
+    stellar_templates_log /= np.nanmedian(stellar_templates_log, axis=0)
+
+    # Store stellar template norms 
+    stellar_template_norms = np.nanmedian(stellar_templates_log, axis=0)
     stellar_template_norms = np.reshape(stellar_template_norms, (N_metallicities, N_ages))
-
-    # String for filename
-    metal_string = ""
-    for metal in metallicities:
-        metal_string += str(metal).split("0.")[1]
-        metal_string += "_"
-    metal_string = metal_string[:-1]
-
-    # Convert to array
-    stars_templates_log = np.array(stars_templates_log)
-    stars_templates_log = np.swapaxes(stars_templates_log, 0, 1)
-    reg_dim = stars_templates_log.shape[1:]
-    N_metallicities, N_ages = reg_dim
-    stars_templates_log = np.reshape(
-        stars_templates_log, (stars_templates_log.shape[0], -1))
-
-    # Store the linear spectra_linear too
-    stars_templates_linear = np.array(stars_templates_linear)
-    stars_templates_linear = np.swapaxes(stars_templates_linear, 0, 1)
-    stars_templates_linear = np.reshape(
-        stars_templates_linear, (stars_templates_linear.shape[0], -1))
 
     # This line only works if velscale_ratio = 1
     dv = (lambda_vals_ssp_log[0] - lambda_vals_log[0]) * constants.c / 1e3  # km/s
-
 
     ##############################################################################
     # Merge templates so they can be input to pPXF
@@ -363,7 +393,7 @@ def run_ppxf(spec, spec_err, lambda_vals_A,
         ##############################################################################
         # Gas templates
         ##############################################################################
-        # Construct a set of Gaussian emission line stars_templates_log.
+        # Construct a set of Gaussian emission line stellar_templates_log.
         # Estimate the wavelength fitted range in the rest frame.
         gas_templates, gas_names, eline_lambdas = util.emission_lines(
             logLam_temp=lambda_vals_ssp_log,
@@ -376,7 +406,7 @@ def run_ppxf(spec, spec_err, lambda_vals_A,
         # Combines the stellar and gaseous stars_templates into a single array.
         # During the PPXF fit they will be assigned a different kinematic
         # COMPONENT value
-        n_ssp_templates = stars_templates_log.shape[1]
+        n_ssp_templates = stellar_templates_log.shape[1]
         # forbidden lines contain "[*]"
         n_forbidden_lines = np.sum(["[" in a for a in gas_names])
         n_balmer_lines = len(gas_names) - n_forbidden_lines
@@ -395,7 +425,7 @@ def run_ppxf(spec, spec_err, lambda_vals_A,
         # The gas_reddening can be different from the stellar one, if both are fitted.
         gas_reddening = 0 if tie_balmer else None
 
-        # Combines the stellar and gaseous stars_templates_log into a single array.
+        # Combines the stellar and gaseous stellar_templates_log into a single array.
         # During the PPXF fit they will be assigned a different kinematic
         # COMPONENT value
         if ncomponents > 2:
@@ -411,17 +441,17 @@ def run_ppxf(spec, spec_err, lambda_vals_A,
         for ii in range(len(gas_names)):
             gas_names_new.append(f"{gas_names[ii]} (component {kinematic_components[ii + n_ssp_templates]})")
         gas_names = gas_names_new
-        templates = np.column_stack([stars_templates_log, gas_templates])
+        templates = np.column_stack([stellar_templates_log, gas_templates])
 
         # gas_component=True for gas templates
         gas_component = np.array(kinematic_components) > 0
 
     # Case: no gas templates
     else:
-        n_ssp_templates = stars_templates_log.shape[1]
+        n_ssp_templates = stellar_templates_log.shape[1]
         kinematic_components = [0] * n_ssp_templates
         gas_names = None 
-        templates = stars_templates_log
+        templates = stellar_templates_log
         gas_reddening = None
         gas_component = None
 
@@ -476,7 +506,8 @@ def run_ppxf(spec, spec_err, lambda_vals_A,
         ax_spec.autoscale(axis="x", enable=True, tight=True)
 
         fig.canvas.draw()
-        plt.show()    
+        if matplotlib.get_backend() != "agg":
+            plt.show()
 
     ##########################################################################
     # Use pPXF to obtain the stellar age + metallicity, and fit emission lines
