@@ -465,7 +465,6 @@ def run_ppxf(spec, spec_err, lambda_vals_A,
     if regularisation_method == "none":
         # If no regularisation is required, then just run once and exit.
         regul = 0
-        t = time()
         delta_chi2_ideal = np.sqrt(2 * len(good_px))
         pp = ppxf(templates=templates,
                   galaxy=spec_log, noise=spec_err_log,
@@ -480,8 +479,6 @@ def run_ppxf(spec, spec_err, lambda_vals_A,
                   component=kinematic_components, gas_component=gas_component,
                   gas_names=gas_names, gas_reddening=gas_reddening, method="capfit",
                   quiet=True)
-        print("----------------------------------------------------")
-        print(F"Elapsed time in PPXF: {time() - t:.2f} s")
 
     else:
         # Otherwise, run ppxf the first time w/o regularisation. 
