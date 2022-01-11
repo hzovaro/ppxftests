@@ -333,9 +333,13 @@ def create_mock_spectrum(sfh_mass_weighted, isochrones, sigma_star_kms, z, SNR,
 
     ###########################################################################
     # 9. Add noise. 
-    spec_err = spec_wifes / SNR
-    noise = np.random.normal(loc=0, scale=spec_err)
-    spec = spec_wifes + noise
+    if not np.isinf(SNR):
+        spec_err = spec_wifes / SNR
+        noise = np.random.normal(loc=0, scale=spec_err)
+        spec = spec_wifes + noise
+    else:
+        spec_err = np.zeros(spec_wifes.shape)
+        spec = spec_wifes
 
     # Plot to check
     if plotit:
