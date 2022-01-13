@@ -37,10 +37,31 @@ def get_wavelength_from_velocity(lambda_rest, v, units):
                                        (1 - v_m_s / constants.c))
     return lambda_obs
 
+###########################################################################
+def calculate_mw_age(sfh_mw, age_thresh, ages):
+    """
+    A function for computing the mass-weighted age from a star-formation
+    history. 
+    """
+    # Sum the SFH over the metallicity dimension to get the 1D SFH
+    sfh_mw_1D = np.nansum(sfh_mw, axis=0) if sfh_mw.ndim > 1 else sfh_mw
+
+    # Find the index of the threshold age in the template age array
+    age_thresh_idx = np.nanargmin(np.abs(ages - age_thresh))
+    
+    # Compute the mass-weighted age 
+    log_age_mw = np.nansum(sfh_mw_1D[:age_thresh_idx] * np.log10(ages[:age_thresh_idx])) / np.nansum(sfh_mw_1D[:age_thresh_idx])
+    
+    # Compute the corresponding index in the array (useful for plotting)
+    log_age_mw_idx = (log_age_mw - np.log10(ages[0])) / (np.log10(ages[1]) - np.log10(ages[0]))
+    
+    return log_age_mw, log_age_mw_idx
+
 ###############################################################################
 def create_mock_spectrum(sfh_mass_weighted, isochrones, sigma_star_kms, z, SNR,
                          ngascomponents=0, sigma_gas_kms=[], v_gas_kms=[], 
                          eline_model=[], L_Ha_erg_s=[], 
+                         agn_continuum=False, alpha_nu=2.0, L_NT_erg_s=0,
                          metals_to_use=None, plotit=True):
     
     """
@@ -79,7 +100,16 @@ def create_mock_spectrum(sfh_mass_weighted, isochrones, sigma_star_kms, z, SNR,
     L_Ha_erg_s              Total Halpha emission line luminosity for each 
                             component in the emission lines. Must have length
                             equal to ngascomponents.
-
+    agn_continuum           Whether to include an AGN power law
+    alpha_nu                Power law exponent in frequency, defined by 
+                                        F_nu \propto nu**(- alpha_nu)
+                            The corresponding exponent in wavelength space is 
+                            given by 
+                                        alpha_lambda = 2 - alpha_nu
+    L_NT_erg_s                    Nonthermal continuum lumonsity between 3000 Å and
+                            9500 Å, used to derive the normalisation constant
+                            for the AGN continuum. In most AGN, 
+                                        L_NT_erg_s approx. 80 * L_Hbeta (Yee 1980)
     Returns:
     spec, spec_err          mock spectrum and corresponding 1-sigma errors, in
                             units of erg/s. 
@@ -116,6 +146,9 @@ def create_mock_spectrum(sfh_mass_weighted, isochrones, sigma_star_kms, z, SNR,
             "len(eline_model) must be equal to ngascomponents!"
         assert np.all([m in ["HII", "AGN", "BLR"] for m in eline_model]),\
             "entries in eline_model must be either 'HII', 'AGN' or 'BLR'!"
+
+    if agn_continuum:
+        assert alpha_nu != 1.0, "alpha_nu must not be 1.0!"
 
     ###########################################################################
     # WIFES Instrument properties
@@ -162,15 +195,16 @@ def create_mock_spectrum(sfh_mass_weighted, isochrones, sigma_star_kms, z, SNR,
     # Plot to check
     if plotit:
         fig, ax = plt.subplots(nrows=1, ncols=1, figsize=(fig_w, fig_h))
-        ax.plot(lambda_vals_ssp_linear, spec_linear, color="black", label="Spectrum")
+        ax.plot(lambda_vals_ssp_linear, spec_linear, color="black", label="Total spectrum")
         for mm, aa in product(range(N_metallicities), range(N_ages)):
             w = sfh_mass_weighted[mm, aa]
             if w > 0:
                 ax.plot(lambda_vals_ssp_linear, stellar_templates_linear[:, mm, aa] * w, 
-                        label=f"t = {ages[aa] / 1e6:.2f} Myr, m = {metallicities[mm]:.4f}, w = {w:g}")
-        ax.set_ylabel(f"$L$ (erg/s/$\AA$/M$_\odot$)")
+                        alpha=0.5, label=f"t = {ages[aa] / 1e6:.2f} Myr, m = {metallicities[mm]:.4f}, w = {w:g}")
+        ax.set_ylabel(f"$L$ (erg/s/$\AA$)")
         ax.set_xlabel(f"$\lambda$")
-        # ax.legend()
+        ax.legend()
+        ax.set_ylim([0, None])
         ax.autoscale(enable="True", axis="x", tight=True)
 
     ###########################################################################
@@ -191,12 +225,12 @@ def create_mock_spectrum(sfh_mass_weighted, isochrones, sigma_star_kms, z, SNR,
              np.exp(- (delta_v_vals_kms**2) / (2 * sigma_star_kms**2))
 
     # Plot to check
-    if plotit:
-        fig, ax = plt.subplots(nrows=1, ncols=1)
-        ax.plot(delta_v_vals_kms, kernel_losvd)
-        ax.axvline(0, color="black")
-        ax.set_xlabel(r"$\Delta v$")
-        ax.set_title("LOSVD kernel")
+    # if plotit:
+    #     fig, ax = plt.subplots(nrows=1, ncols=1)
+    #     ax.plot(delta_v_vals_kms, kernel_losvd)
+    #     ax.axvline(0, color="black")
+    #     ax.set_xlabel(r"$\Delta v$")
+    #     ax.set_title("LOSVD kernel")
 
     ###########################################################################
     # 4a. Convolve the LOSVD kernel with the mock spectrum
@@ -301,14 +335,48 @@ def create_mock_spectrum(sfh_mass_weighted, isochrones, sigma_star_kms, z, SNR,
                 spec_log_lines += line
 
         # Add to spectrum
+        spec_log_conv_prev = np.copy(spec_log_conv)
         spec_log_conv += spec_log_lines
 
         if plotit:
             ax.plot(np.exp(lambda_vals_ssp_log), spec_log_lines, color="green", label="Emission lines")
-            ax.plot(np.exp(lambda_vals_ssp_log), spec_log_conv, color="red", label="With emission lines")
-            ax.set_ylabel(f"$L$ (erg/s/$\AA$/M$_\odot$)")
+            ax.plot(np.exp(lambda_vals_ssp_log), spec_log_conv_prev, color="black", alpha=0.5, label="Without emission lines")
+            ax.plot(np.exp(lambda_vals_ssp_log), spec_log_conv, color="black", label="With emission lines")
+            ax.set_ylabel(f"$L$ (erg/s/$\AA$)")
             ax.set_xlabel(f"$\lambda$")
             ax.legend()
+            ax.set_ylim([0, None])
+            ax.autoscale(enable="True", axis="x", tight=True)
+
+    ###########################################################################
+    # 5b. Add AGN continuum, if needed
+    # References:
+    # http://www.chara.gsu.edu/~crenshaw/4.AGN_Components.pdf
+    # https://www.astro.rug.nl/~koopmans/lecture6.pdf
+    # Typical values of alpha_nu range from 0.3 - 2; Groves+2004 suggest a 
+    # range of 1.2 - 2.0
+    if agn_continuum:
+        # Compute the continuum normalisation
+        alpha_lambda = 2 - alpha_nu
+        F_lambda_0 = L_NT_erg_s * (1 - alpha_lambda) / (9500**(1 - alpha_lambda) - 3000**(1 - alpha_lambda))
+
+        # Compute the continuum
+        spec_log_agn = F_lambda_0 * np.exp(lambda_vals_ssp_log)**(-alpha_lambda)
+
+        # Add to spectrum
+        spec_log_conv_prev = np.copy(spec_log_conv)
+        spec_log_conv += spec_log_agn
+
+        if plotit:
+            fig, ax = plt.subplots(nrows=1, ncols=1, figsize=(fig_w, fig_h))
+            ax.plot(np.exp(lambda_vals_ssp_log), spec_log_agn, color="purple", 
+                    label=r"AGN continuum ($\log_{10} L_{\rm NT} = %.2f, \alpha_\nu = %.2f$)" % (np.log10(L_NT_erg_s), alpha_nu))
+            ax.plot(np.exp(lambda_vals_ssp_log), spec_log_conv_prev, color="black", alpha=0.5, label="Without AGN continuum")
+            ax.plot(np.exp(lambda_vals_ssp_log), spec_log_conv, color="black", label="With AGN continuum")
+            ax.set_ylabel(f"$L$ (erg/s/$\AA$)")
+            ax.set_xlabel(f"$\lambda$")
+            ax.legend()
+            ax.set_ylim([0, None])
             ax.autoscale(enable="True", axis="x", tight=True)
 
     ###########################################################################
@@ -344,11 +412,13 @@ def create_mock_spectrum(sfh_mass_weighted, isochrones, sigma_star_kms, z, SNR,
     # Plot to check
     if plotit:
         fig, ax = plt.subplots(nrows=1, ncols=1, figsize=(fig_w, fig_h))
-        ax.errorbar(x=lambda_vals_wifes_A, y=spec, yerr=spec_err, color="red")
-
-        ax.legend() 
+        ax.errorbar(x=lambda_vals_wifes_A, y=spec, yerr=spec_err, color="black")
+ 
         ax.set_title("Mock spectrum")
         ax.set_xlabel(f"$\lambda$")
+        ax.set_ylabel(f"$L$ (erg/s/$\AA$)")
+        ax.set_ylim([0, None])
+        ax.autoscale(enable="True", axis="x", tight=True)
 
         # Plot the SFH
         plot_sfh_mass_weighted(sfh_mass_weighted, ages, metallicities)
