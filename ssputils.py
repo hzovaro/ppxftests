@@ -29,7 +29,8 @@ def load_ssp_templates(isochrones, metals_to_use=None):
 
     ###########################################################################
     # List of template names - one for each metallicity
-    ssp_template_path = "/home/u5708159/python/Modules/ppxftests/SSP_templates"
+    abspath = __file__.split("/ssputils.py")[0]
+    ssp_template_path = os.path.join(abspath, "SSP_templates")
     ssp_template_fnames = [f"SSP{isochrones}.z{m}.npz" for m in metals_to_use]
 
     ###########################################################################

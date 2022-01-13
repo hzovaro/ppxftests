@@ -63,7 +63,8 @@ def load_sfh(gal, isochrones="Padova", plotit=False):
     Load a SFH from one of Phil's simulated galaxies.
     """
     assert type(gal) == int, f"gal must be an integer!"
-    fname = os.path.join("SFHs", f"SFH_ga{gal:04}.dat")
+    abspath = __file__.split("/mockspec.py")[0]
+    fname = os.path.join(abspath, "SFHs", f"SFH_ga{gal:04}.dat")
     assert os.path.exists(fname), f"SFH file {fname} not found!"
 
     # Load the file 
@@ -80,7 +81,7 @@ def load_sfh(gal, isochrones="Padova", plotit=False):
     # Plot the SFH
     if plotit:
         plot_sfh_mass_weighted(sfh_mw, ages, metallicities)
-        plt.gcf().get_axes()[0].set_title(f"Galaxy {gal:004} " + r"$M_{\rm tot} = %.4e\,\rm M_\odot$" % M_tot)
+        plt.gcf().get_axes()[0].set_title(f"Galaxy {gal:004} " + r"- $M_{\rm tot} = %.4e\,\rm M_\odot$" % M_tot)
 
     return sfh_mw
 
@@ -230,7 +231,7 @@ def create_mock_spectrum(sfh_mass_weighted, isochrones, sigma_star_kms, z, SNR,
                         alpha=0.5, label=f"t = {ages[aa] / 1e6:.2f} Myr, m = {metallicities[mm]:.4f}, w = {w:g}")
         ax.set_ylabel(f"$L$ (erg/s/$\AA$)")
         ax.set_xlabel(f"$\lambda$")
-        ax.legend()
+        # ax.legend()
         ax.set_ylim([0, None])
         ax.autoscale(enable="True", axis="x", tight=True)
 
