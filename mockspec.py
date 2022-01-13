@@ -57,6 +57,33 @@ def calculate_mw_age(sfh_mw, age_thresh, ages):
     
     return log_age_mw, log_age_mw_idx
 
+###########################################################################
+def load_sfh(gal, isochrones="Padova", plotit=False):
+    """
+    Load a SFH from one of Phil's simulated galaxies.
+    """
+    assert type(gal) == int, f"gal must be an integer!"
+    fname = os.path.join("SFHs", f"SFH_ga{gal:04}.dat")
+    assert os.path.exists(fname), f"SFH file {fname} not found!"
+
+    # Load the file 
+    f = open(fname)
+    sfh_mw = np.array([l.split() for l in f.readlines()]).astype(float).T
+    M_tot = np.nansum(sfh_mw)
+
+    _, _, metallicities, ages = load_ssp_templates(isochrones)
+    assert sfh_mw.shape[0] == len(metallicities),\
+        f"Loaded SFH has zeroth dimension {sfh_mw.shape[0]} but should have dimension {len(metallicities)} for the {isochrones} isochrones!"
+    assert sfh_mw.shape[1] == len(ages),\
+        f"Loaded SFH has first dimension {sfh_mw.shape[1]} but should have dimension {len(ages)} for the {isochrones} isochrones!"
+
+    # Plot the SFH
+    if plotit:
+        plot_sfh_mass_weighted(sfh_mw, ages, metallicities)
+        plt.gcf().get_axes()[0].set_title(f"Galaxy {gal:004} " + r"$M_{\rm tot} = %.4e\,\rm M_\odot$" % M_tot)
+
+    return sfh_mw
+
 ###############################################################################
 def create_mock_spectrum(sfh_mass_weighted, isochrones, sigma_star_kms, z, SNR,
                          ngascomponents=0, sigma_gas_kms=[], v_gas_kms=[], 
