@@ -27,7 +27,9 @@ def plot_sfh_mass_weighted(sfh_mass_weighted, ages, metallicities,
 
     # Create figure
     if ax is None:
-        fig, ax = plt.subplots(nrows=1, ncols=1, figsize=(10, 3.5))
+        # fig, ax = plt.subplots(nrows=1, ncols=1, figsize=(10, 3.5))
+        fig = plt.figure(figsize=(10, 3.5))
+        ax = fig.add_axes([0.1, 0.25, 0.8, 0.65])
     else:
         fig = ax.get_figure()
     bbox = ax.get_position()
@@ -46,7 +48,7 @@ def plot_sfh_mass_weighted(sfh_mass_weighted, ages, metallicities,
     cax.set_ylabel(r"Mass $\log_{10}(\rm M_\odot)$")
     ax.set_xticks(range(len(ages)))
     ax.set_xlabel("Age (Myr)")
-    ax.set_xticklabels(["{:}".format(age / 1e6) for age in ages], rotation="vertical")
+    ax.set_xticklabels(["{:}".format(age / 1e6) for age in ages], rotation="vertical", fontsize="x-small")
     
     return
 
