@@ -17,6 +17,7 @@ from ppxftests.ppxf_plot import plot_sfh_mass_weighted
 from ppxftests.ssputils import load_ssp_templates
 
 import matplotlib.pyplot as plt
+from matplotlib.lines import Line2D
 plt.ion()
 plt.close("all")
 
@@ -231,7 +232,10 @@ def create_mock_spectrum(sfh_mass_weighted, isochrones, sigma_star_kms, z, SNR,
                         alpha=0.5, label=f"t = {ages[aa] / 1e6:.2f} Myr, m = {metallicities[mm]:.4f}, w = {w:g}")
         ax.set_ylabel(f"$L$ (erg/s/$\AA$)")
         ax.set_xlabel(f"$\lambda$")
-        # ax.legend()
+        lines = [Line2D([0], [0], color="black", alpha=1.0),
+                 Line2D([0], [0], color="black", alpha=0.5)]
+        labels = ["Total spectrum", "Individual templates"]
+        ax.legend(lines, labels)
         ax.set_ylim([0, None])
         ax.autoscale(enable="True", axis="x", tight=True)
 
@@ -270,7 +274,7 @@ def create_mock_spectrum(sfh_mass_weighted, isochrones, sigma_star_kms, z, SNR,
         spec_log_lines = np.zeros(spec_log_conv.shape)
         if plotit:
             fig, ax = plt.subplots(nrows=1, ncols=1, figsize=(fig_w, fig_h))
-            ax.plot(np.exp(lambda_vals_ssp_log), spec_log_conv, color="black", label="Stellar continuum only")
+            ax.plot(np.exp(lambda_vals_ssp_log), spec_log_conv, color="orange", label="Stellar continuum only")
  
         eline_lambdas_A = {
             "NeV3347": 3346.79,
