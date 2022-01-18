@@ -12,11 +12,17 @@ plt.close("all")
 
 from IPython.core.debugger import Tracer
 
+_, _, metallicities_padova, ages_padova = load_ssp_templates("Padova")
+_, _, metallicities_geneva, ages_geneva = load_ssp_templates("Geneva")
+bin_edges_padova, bin_widths_padova = get_bin_edges_and_widths(isochrones="Padova")
+bin_edges_geneva, bin_widths_geneva = get_bin_edges_and_widths(isochrones="Geneva")
+
 ###########################################################################
 def load_sfh(gal, isochrones="Padova", plotit=False):
     """
     Load a SFH from one of Phil's simulated galaxies.
     """
+    assert isochrones == "Padova", "for now, isochrones must be 'Padova'!"
     assert type(gal) == int, f"gal must be an integer!"
     abspath = __file__.split("/sfhutils.py")[0]
     fname = os.path.join(abspath, "SFHs", f"SFH_ga{gal:04}.dat")
@@ -27,7 +33,11 @@ def load_sfh(gal, isochrones="Padova", plotit=False):
     sfh_mw = np.array([l.split() for l in f.readlines()]).astype(float).T
     M_tot = np.nansum(sfh_mw)
 
-    _, _, metallicities, ages = load_ssp_templates(isochrones)
+    if isochrones == "Padova":
+        metallicities, ages = metallicities_padova, ages_padova
+    elif isochrones == "Geneva":
+        metallicities, ages = metallicities_geneva, ages_geneva
+
     assert sfh_mw.shape[0] == len(metallicities),\
         f"Loaded SFH has zeroth dimension {sfh_mw.shape[0]} but should have dimension {len(metallicities)} for the {isochrones} isochrones!"
     assert sfh_mw.shape[1] == len(ages),\
@@ -46,11 +56,13 @@ def compute_mw_age(sfh_mw, age_thresh, isochrones):
     A function for computing the mass-weighted age from a star-formation
     history. 
     """
+    assert isochrones in ["Padova", "Geneva"],\
+        "isochrones must be either 'Padova' or 'Geneva'!"
+
     # Sum the SFH over the metallicity dimension to get the 1D SFH
     sfh_mw_1D = np.nansum(sfh_mw, axis=0) if sfh_mw.ndim > 1 else sfh_mw
 
-    # Get ages
-    _, _, metallicities, ages = load_ssp_templates(isochrones)
+    ages = ages_padova if isochrones == "Padova" else ages_geneva
 
     # Find the index of the threshold age in the template age array
     age_thresh_idx = np.nanargmin(np.abs(ages - age_thresh))
@@ -63,18 +75,51 @@ def compute_mw_age(sfh_mw, age_thresh, isochrones):
     
     return log_age_mw, log_age_mw_idx
 
+
+###########################################################################
+def compute_lw_age(sfh_lw, age_thresh, isochrones):
+    """
+    A function for computing the mass-weighted age from a star-formation
+    history. 
+    """
+    assert isochrones in ["Padova", "Geneva"],\
+        "isochrones must be either 'Padova' or 'Geneva'!"
+
+    # Sum the SFH over the metallicity dimension to get the 1D SFH
+    sfh_lw_1D = np.nansum(sfh_lw, axis=0) if sfh_lw.ndim > 1 else sfh_lw
+
+    ages = ages_padova if isochrones == "Padova" else ages_geneva
+
+    # Find the index of the threshold age in the template age array
+    age_thresh_idx = np.nanargmin(np.abs(ages - age_thresh))
+    
+    # Compute the light-weighted age 
+    log_age_lw = np.nansum(sfh_lw_1D[:age_thresh_idx] * np.log10(ages[:age_thresh_idx])) / np.nansum(sfh_lw_1D[:age_thresh_idx])
+    
+    # Compute the corresponding index in the array (useful for plotting)
+    log_age_lw_idx = (log_age_lw - np.log10(ages[0])) / (np.log10(ages[1]) - np.log10(ages[0]))
+    
+    return log_age_lw, log_age_lw_idx
+
+
 ###########################################################################
 def compute_sfr_thresh_age(sfh_mw, sfr_thresh, isochrones):
     """
     A function for computing the most recent time at which the SFR exceeded
     a specified threshold in a given star formation history.
     """
+    assert isochrones in ["Padova", "Geneva"],\
+        "isochrones must be either 'Padova' or 'Geneva'!"
+
     # Sum the SFH over the metallicity dimension to get the 1D SFH
     sfh_mw_1D = np.nansum(sfh_mw, axis=0) if sfh_mw.ndim > 1 else sfh_mw
 
     # Compute the bin edges and widths so that we can compute the mean SFR in each bin
-    bin_edges, bin_widths = get_bin_edges_and_widths(isochrones=isochrones)
-    
+    if isochrones == "Padova":
+        bin_edges, bin_widths, ages = bin_edges_padova, bin_widths_padova, ages_padova
+    elif isochrones == "Geneva":
+        bin_edges, bin_widths, ages = bin_edges_geneva, bin_widths_geneva, ages_geneva
+
     # Compute the mean SFR in each bin
     sfr_avg = sfh_mw_1D / bin_widths
     
