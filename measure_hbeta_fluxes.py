@@ -76,9 +76,6 @@ for gal, fname in zip(gals, fnames):
     # Compute total Hbeta luminosity
     L_Ha_ext_corr_tot = np.nansum(L_Ha_ext_corr_map)
     L_Hb_ext_corr_tot = np.nansum(L_Hb_ext_corr_map)
-    # print(f"{gal}: {np.log10(L_Hb_ext_corr_tot):.3f}")
-
-    # Tracer()() if gal == "NGC1097" else None
 
     # Store in a DataFrame for reference 
     df.loc[gal, "L_Hb (total)"] = L_Hb_ext_corr_tot
@@ -86,12 +83,10 @@ for gal, fname in zip(gals, fnames):
     df.loc[gal, "log L_Hb (total)"] = np.log10(L_Hb_ext_corr_tot)
     df.loc[gal, "log L_Ha (total)"] = np.log10(L_Ha_ext_corr_tot)
 
-    # Tracer()() if gal == "NGC1097" else None
-
 # Plot a histogram of the Hbeta luminosities
 plt.hist(df["log L_Hb (total)"], bins=20)
 plt.xlabel(r"$\log_{10} \left( L_{\rm H\beta} [\rm erg\,s^{-1}]\right)$")
 plt.ylabel(r"$N$")
 plt.grid()
 
-
+df.to_csv("s7_hbeta_fluxes.csv")
