@@ -13,6 +13,7 @@
 import matplotlib.pyplot as plt
 import numpy as np
 from IPython.core.debugger import Tracer
+import matplotlib
 
 ###############################################################################
 def plot_sfh_mass_weighted(sfh_mass_weighted, ages, metallicities, 
@@ -36,21 +37,64 @@ def plot_sfh_mass_weighted(sfh_mass_weighted, ages, metallicities,
     cax = fig.add_axes([bbox.x0 + bbox.width, bbox.y0, 0.025, bbox.height])
     
     # Plot the SFH
-    m = ax.imshow(np.log10(sfh_mass_weighted), cmap="cubehelix_r", 
-                  origin="lower", aspect="auto", 
-                  vmin=0, vmax=np.nanmax(np.log10(sfh_mass_weighted)))
+    sfh_mass_weighted[sfh_mass_weighted == 0] = np.nan
+    cmap = matplotlib.cm.viridis
+    cmap.set_bad('#DADADA')
+    m = ax.imshow(np.log10(sfh_mass_weighted), cmap=cmap, 
+                  origin="lower", aspect="auto")
     fig.colorbar(m, cax=cax)
     
     # Decorations
     ax.set_yticks(range(len(metallicities)))
     ax.set_yticklabels(["{:.3f}".format(met / 0.02) for met in metallicities])
     ax.set_ylabel(r"Metallicity ($Z_\odot$)")
-    cax.set_ylabel(r"Mass $\log_{10}(\rm M_\odot)$")
+    cax.set_ylabel(r"Mass-weighted template weight ($\log_{10}(\rm M_\odot)$)")
     ax.set_xticks(range(len(ages)))
     ax.set_xlabel("Age (Myr)")
     ax.set_xticklabels(["{:}".format(age / 1e6) for age in ages], rotation="vertical", fontsize="x-small")
     
     return
+
+###############################################################################
+def plot_sfh_light_weighted(sfh_light_weighted, ages, metallicities, 
+                            ax=None):
+    """
+    A handy function for making a nice plot of the SFH.
+    """
+    assert sfh_light_weighted.shape[1] == len(ages),\
+        "The first dimension of sfh_light_weighted must be equal to the number of ages!"
+    assert sfh_light_weighted.shape[0] == len(metallicities),\
+        "The zeroth dimension of sfh_light_weighted must be equal to the number of metallicities!"
+
+    # Create figure
+    if ax is None:
+        # fig, ax = plt.subplots(nrows=1, ncols=1, figsize=(10, 3.5))
+        fig = plt.figure(figsize=(10, 3.5))
+        ax = fig.add_axes([0.1, 0.25, 0.8, 0.65])
+    else:
+        fig = ax.get_figure()
+    bbox = ax.get_position()
+    cax = fig.add_axes([bbox.x0 + bbox.width, bbox.y0, 0.025, bbox.height])
+    
+    # Plot the SFH
+    sfh_light_weighted[sfh_light_weighted == 0] = np.nan
+    cmap = matplotlib.cm.viridis
+    cmap.set_bad('#DADADA')
+    m = ax.imshow(np.log10(sfh_light_weighted), cmap=cmap, 
+                  origin="lower", aspect="auto")
+    fig.colorbar(m, cax=cax)
+    
+    # Decorations
+    ax.set_yticks(range(len(metallicities)))
+    ax.set_yticklabels(["{:.3f}".format(met / 0.02) for met in metallicities])
+    ax.set_ylabel(r"Metallicity ($Z_\odot$)")
+    cax.set_ylabel(r"Light-weighted template weight ($\log_{10} \left[\rm M_\odot\,erg\,s^{-1}\,Å^{-1}\right]$)")
+    ax.set_xticks(range(len(ages)))
+    ax.set_xlabel("Age (Myr)")
+    ax.set_xticklabels(["{:}".format(age / 1e6) for age in ages], rotation="vertical", fontsize="x-small")
+    
+    return
+
 
 ###############################################################################
 def ppxf_plot(pp, ax=None):
