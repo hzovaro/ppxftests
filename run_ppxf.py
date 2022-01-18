@@ -20,6 +20,7 @@ from time import time
 
 from scipy import constants, ndimage
 import numpy as np
+from numpy.random import RandomState
 import extinction
 from itertools import product
 import multiprocessing
@@ -31,7 +32,7 @@ import ppxf.ppxf_util as util
 from cosmocalc import get_dist
 from log_rebin_errors import log_rebin_errors
 
-from ppxftests.ssputils import load_ssp_templates
+from ppxftests.ssputils import load_ssp_templates, get_bin_edges_and_widths
 from ppxftests.mockspec import FWHM_WIFES_INST_A
 from ppxftests.ppxf_plot import ppxf_plot, plot_sfh_mass_weighted
 
@@ -102,6 +103,75 @@ def sci_notation(num, err):
         return s.format(mantissa_dp, mantissa_err_dp)
 
 ##############################################################################
+# For doing MC simulations
+##############################################################################
+def ppxf_mc_helper(args):
+    """
+    Helper function used in ppxf_mc() for running Monte Carlo simulations 
+    with ppxf. Note that no regularisation is used.
+
+    Inputs:
+    args        list containing the following:
+        seed            integer required to seed the RNG for computing the extra 
+                        noise to be added to the spectrum
+        spec            input (noisy) spectrum
+        spec_err        corresponding 1-sigma errors 
+        lambda_vals_A   wavelength values (Angstroms)
+
+    """
+
+    # Unpack arguments
+    seed, spec, spec_err, lambda_vals_A = args
+    
+    # Add "extra" noise to the spectrum
+    rng = RandomState(seed)
+    noise = rng.normal(scale=spec_err)
+    spec_noise = spec + noise
+
+    # This is to mitigate the "edge effects" of the convolution with the LSF
+    spec_noise[0] = -9999
+    spec_noise[-1] = -9999
+
+    # Run ppxf
+    pp = run_ppxf(spec=spec_noise, spec_err=spec_err, lambda_vals_A=lambda_vals_A,
+                  z=z, ngascomponents=1,
+                  regularisation_method="none", 
+                  isochrones="Padova",
+                  fit_gas=False, tie_balmer=True,
+                  plotit=False, savefigs=False, interactive_mode=False)
+    return pp
+
+def ppxf_mc(spec, spec_err, lambda_vals_A,
+            niters, nthreads):
+    """
+    Run Monte-Carlo simulations with ppxf.
+
+    Run ppxf a total of niters times on the input spectrum (spec), each time 
+    adding additional random noise goverend by the 1-sigma errors on the 
+    input spectrum (spec_err)
+
+    Inputs:
+    spec            Input spectrum
+    spec_err        Corresponding 1-sigma errors
+    lambda_vals_A   Wavelength values for the spectrum (Angstroms)
+    niters          Total number of MC iterations 
+    nthreads        Number of threads used
+    
+    """
+    # Input arguments
+    seeds = list(np.random.randint(low=0, high=100 * niters, size=niters))
+    args_list = [[s, spec, spec_err, lambda_vals_A] for s in seeds]
+
+    # Run in parallel
+    print(f"ppxf_mc(): running ppxf on {nthreads} threads...")
+    t = time()
+    with multiprocessing.Pool(nthreads) as pool:
+        pp_list = list(tqdm(pool.imap(ppxf_mc_helper, args_list), total=niters))
+    print(f"ppxf_mc(): elapsed time = {time() - t:.2f} s")
+
+    return pp_list
+
+##############################################################################
 # For running in parallel
 ##############################################################################
 def ppxf_helper(args):
@@ -140,6 +210,7 @@ def run_ppxf(spec, spec_err, lambda_vals_A,
              fit_gas=True,
              FWHM_inst_A=FWHM_WIFES_INST_A,
              bad_pixel_ranges_A=[],
+             lambda_norm_A=5000,
              regularisation_method="auto",
              auto_adjust_regul=False, regul_nthreads=20,
              delta_regul_min=5, regul_max=1e4,
@@ -163,6 +234,8 @@ def run_ppxf(spec, spec_err, lambda_vals_A,
     
     isochrones          Set of isochrones to use - must be Padova or Geneva
     tie_balmer          If true, use the Ha/Hb ratio to measure gas reddening.
+    lambda_norm_A       Normalisation wavelength for computing the light-
+                        ages.
     regularisation_method       
                         Method to use to determine the regularisation. 
                         Options: "none", "auto", "interactive"
@@ -234,7 +307,8 @@ def run_ppxf(spec, spec_err, lambda_vals_A,
     good_px = np.squeeze(np.argwhere(~bad_px_mask))
 
     # Normalize spectrum to avoid numerical issues
-    norm = np.median(spec_log[good_px])
+    lambda_norm_idx = np.nanargmin(np.abs(np.exp(lambda_vals_log) - lambda_norm_A))
+    norm = spec_log[lambda_norm_idx]
     spec_err_log /= norm
     spec_log /= norm    
     spec_err_log[spec_err_log <= 0] = 99999
@@ -327,7 +401,8 @@ def run_ppxf(spec, spec_err, lambda_vals_A,
         stellar_templates_log[:, ii] = spec_ssp_log
 
     # Normalise
-    stellar_template_norms = np.nanmedian(stellar_templates_log, axis=0)
+    lambda_norm_idx = np.nanargmin(np.abs(np.exp(lambda_vals_ssp_log) - lambda_norm_A))
+    stellar_template_norms = np.copy(stellar_templates_log)[lambda_norm_idx, :]
     stellar_templates_log /= stellar_template_norms
 
     # Reshape
@@ -406,18 +481,31 @@ def run_ppxf(spec, spec_err, lambda_vals_A,
         gas_component = None
 
     ##########################################################################
-    # Mass-weighted ages
+    # Mass-weighted weights
     ##########################################################################
     def compute_mass_weights(pp):
         # Reshape the normalisation factors into the same shape as the ppxf weights
-        weights_light_weighted = pp.weights
+        weights_light_weighted_normed = pp.weights
+        weights_light_weighted_normed = np.reshape(
+            weights_light_weighted_normed[~pp.gas_component], (N_metallicities, N_ages))
+
+        # Convert the light-weighted ages into mass-weighted ages
+        weights_mass_weighted = weights_light_weighted_normed * norm / stellar_template_norms
+
+        return weights_mass_weighted
+
+    ##########################################################################
+    # light-weighted weights
+    ##########################################################################
+    def compute_light_weights(pp):
+        # Reshape the normalisation factors into the same shape as the ppxf weights
+        # Un-normalise the weights so that they are in units of solar luminosities 
+        # at the normalisation wavelength (by default 5000 Å)
+        weights_light_weighted = pp.weights * norm
         weights_light_weighted = np.reshape(
             weights_light_weighted[~pp.gas_component], (N_metallicities, N_ages))
 
-        # Convert the light-weighted ages into mass-weighted ages
-        weights_mass_weighted = weights_light_weighted * norm / stellar_template_norms
-
-        return weights_mass_weighted
+        return weights_light_weighted
 
     ##############################################################################
     # Wrapper for plotting
@@ -856,9 +944,18 @@ def run_ppxf(spec, spec_err, lambda_vals_A,
     # Add some extra useful stuff to the ppxf instance
     ##########################################################################
     pp.weights_mass_weighted = compute_mass_weights(pp)  # Mass-weighted template weights
-    pp.weights_light_weighted = np.reshape(pp.weights[~pp.gas_component], (N_metallicities, N_ages))
+    pp.weights_light_weighted = compute_light_weights(pp)
+    # pp.weights_light_weighted = np.reshape(pp.weights[~pp.gas_component], (N_metallicities, N_ages))
     pp.norm = norm  # Normalisation factor for the logarithmically binned input spectrum
     pp.stellar_template_norms = stellar_template_norms  # Normalisation factors for the logarithmically binned stellar templates
+
+    # Compute the mass- and light-weighted star formation history 
+    pp.sfh_mw_1D = np.nansum(pp.weights_mass_weighted, axis=0)
+    pp.sfh_lw_1D = np.nansum(pp.weights_light_weighted, axis=0)
+
+    # Compute the mean SFR in each bin
+    bin_edges, bin_widths = get_bin_edges_and_widths(isochrones)
+    pp.sfr_mean = pp.sfh_mw_1D / bin_widths 
 
     ##########################################################################
     # Plotting the fit
