@@ -288,6 +288,7 @@ def run_ppxf(spec, spec_err, lambda_vals_A,
     # Rebin to a log scale
     spec_log, lambda_vals_log, velscale = util.log_rebin(
         np.array([lambda_start_A, lambda_end_A]), spec_linear)
+    print(velscale)
 
     # Estimate the errors
     spec_err_log = log_rebin_errors(spec_linear, spec_err_linear, lambda_start_A, lambda_end_A)
@@ -463,7 +464,7 @@ def run_ppxf(spec, spec_err, lambda_vals_A,
     ##########################################################################
     def compute_light_weights(pp):
         # Reshape the normalisation factors into the same shape as the ppxf weights
-        # Un-normalise the weights so that they are in units of solar luminosities 
+        # Un-normalise the weights so that they are in units of Msun/(erg/s/Å) 
         # at the normalisation wavelength (by default 5000 Å)
         weights_light_weighted = pp.weights * norm
         weights_light_weighted = np.reshape(
@@ -487,7 +488,9 @@ def run_ppxf(spec, spec_err, lambda_vals_A,
         cbarax = fig.add_axes([bbox.x0 + bbox.width, bbox.y0, 0.03, bbox.height])
 
         # Histogram
-        m = ax_hist.imshow(np.log10(weights_mass_weighted), cmap="cubehelix_r", origin="lower", aspect="auto", vmin=0, vmax=np.nanmax(np.log10(weights_mass_weighted)))
+        cmap = matplotlib.cm.viridis_r
+        cmap.set_bad("#DADADA")
+        m = ax_hist.imshow(np.log10(weights_mass_weighted), cmap=cmap, origin="lower", aspect="auto", vmin=0, vmax=np.nanmax(np.log10(weights_mass_weighted)))
         fig.colorbar(m, cax=cbarax)
         ax_hist.set_yticks(range(len(metallicities)))
         ax_hist.set_yticklabels(["{:.3f}".format(met / 0.02)
@@ -1023,5 +1026,4 @@ if __name__ == "__main__":
     ax.set_xticklabels(["{:}".format(age / 1e6) for age in ages], rotation="vertical")
     ax.autoscale(axis="x", enable=True, tight=True)
     ax.grid()
-    fig_sfh.canvas.draw()
 
