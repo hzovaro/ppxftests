@@ -18,7 +18,7 @@ import matplotlib
 
 from time import time
 
-from scipy import constants, ndimage
+from scipy import constants
 import numpy as np
 from numpy.random import RandomState
 import extinction
@@ -32,7 +32,7 @@ import ppxf.ppxf_util as util
 from cosmocalc import get_dist
 from log_rebin_errors import log_rebin_errors
 
-from ppxftests.ssputils import load_ssp_templates, get_bin_edges_and_widths
+from ppxftests.ssputils import load_ssp_templates, get_bin_edges_and_widths, log_rebin_and_convolve_stellar_templates
 from ppxftests.mockspec import FWHM_WIFES_INST_A
 from ppxftests.ppxf_plot import ppxf_plot, plot_sfh_mass_weighted
 
@@ -353,52 +353,16 @@ def run_ppxf(spec, spec_err, lambda_vals_A,
     start_kin = [vel, 100.]
     fixed_kin = [0, 0]
 
-    # SSP template parameters
-    # Gonzalez-Delgado spectra_linear have a constant spectral sampling of 0.3 A.
-    dlambda_A_ssp = 0.30
-    # Assuming that sigma_diff_px = dlambda_A_ssp.
-    FWHM_ssp_A = 2 * np.sqrt(2 * np.log(2)) * dlambda_A_ssp
-
     ##############################################################################
     # SSP templates
     ##############################################################################
-    # Load the SSP templates
-    stellar_templates_linear, lambda_vals_ssp_linear, metallicities, ages =\
-        load_ssp_templates(isochrones, metals_to_use)
-    N_metallicities = len(metallicities)
-    N_ages = len(ages)
-    N_lambda_ssp_linear = len(lambda_vals_ssp_linear)
+    stellar_templates_log, lambda_vals_ssp_log, N_metallicities, N_ages =\
+        log_rebin_and_convolve_stellar_templates(isochrones, metals_to_use, 
+                                                 FWHM_inst_A=FWHM_WIFES_INST_A, 
+                                                 velscale=velscale)
+    
+    # Regularisation dimensions
     reg_dim = (N_metallicities, N_ages)
-
-    # Reshape stellar templates so that its dimensions are (N_lambda, N_ages * N_metallicities)
-    stellar_templates_linear =\
-        stellar_templates_linear.reshape((N_lambda_ssp_linear, N_ages * N_metallicities))
-
-    # Extract the wavelength range for the logarithmically rebinned templates
-    _, lambda_vals_ssp_log, _ = util.log_rebin(np.array(
-        [lambda_vals_ssp_linear[0], lambda_vals_ssp_linear[-1]]),
-        stellar_templates_linear[:, 0], velscale=velscale)
-    N_lambda_ssp_log = len(lambda_vals_ssp_log)
-
-    # Create an array to store the logarithmically rebinned spectra in
-    stellar_templates_log = np.zeros((N_lambda_ssp_log, N_ages * N_metallicities))
-
-    # Convolve each SSP template to the instrumental resolution
-    FWHM_diff_A = np.sqrt(FWHM_inst_A**2 - FWHM_ssp_A**2)
-    sigma_diff_px = FWHM_diff_A / (2 * np.sqrt(2 * np.log(2))) / dlambda_A_ssp  # sigma_diff_px difference in pixels
-    stars_templates_linear_conv = np.zeros(stellar_templates_linear.shape)
-    for ii in range(N_ages * N_metallicities):
-        # Convolve
-        stars_templates_linear_conv[:, ii] =\
-            ndimage.gaussian_filter1d(stellar_templates_linear[:, ii], sigma_diff_px)
-
-        # Logarithmically rebin
-        spec_ssp_log, lambda_vals_ssp_log, velscale_temp =\
-            util.log_rebin(np.array(
-                [lambda_vals_ssp_linear[0], lambda_vals_ssp_linear[-1]]),
-                stars_templates_linear_conv[:, ii],
-                velscale=velscale)
-        stellar_templates_log[:, ii] = spec_ssp_log
 
     # Normalise
     lambda_norm_idx = np.nanargmin(np.abs(np.exp(lambda_vals_ssp_log) - lambda_norm_A))
@@ -981,7 +945,10 @@ def run_ppxf(spec, spec_err, lambda_vals_A,
 #%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 ###############################################################################
 if __name__ == "__main__":
-    from mockspec import create_mock_spectrum, get_age_and_metallicity_values
+    from ppxftests.mockspec import create_mock_spectrum
+    from ppxftests.ssputils import load_ssp_templates
+    from ppxftests.sfhutils import plot_sfh_mass_weighted
+
 
     ###########################################################################
     # Mock spectra options
@@ -1000,13 +967,14 @@ if __name__ == "__main__":
     ###########################################################################
     # Idea 1: use a Gaussian kernel to smooth "delta-function"-like SFHs
     # Idea 2: are the templates logarithmically spaced in age? If so, could use e.g. every 2nd template 
-    ages, metallicities = get_age_and_metallicity_values(isochrones)
+    _, _, metallicities, ages = load_ssp_templates(isochrones)
     N_ages = len(ages)
     N_metallicities = len(metallicities)
 
     sfh_input = np.zeros((N_metallicities, N_ages))
     # sfh_input[1, 10] = 1e7
     sfh_input[2, 4] = 1e10
+    plot_sfh_mass_weighted(sfh_input, ages, metallicities)
 
     ###########################################################################
     # CREATE THE MOCK SPECTRUM
@@ -1019,11 +987,12 @@ if __name__ == "__main__":
     ###########################################################################
     # RUN PPXF
     ###########################################################################
-    pp, sfh_fit = run_ppxf(spec=spec, spec_err=spec_err, lambda_vals_A=lambda_vals_A, 
-                           z=z, ngascomponents=1,
-                           auto_adjust_regul=True,
-                           plotit=True,
-                           isochrones="Padova", tie_balmer=True)
+    pp = run_ppxf(spec=spec, spec_err=spec_err, lambda_vals_A=lambda_vals_A, 
+                  z=z, ngascomponents=1,
+                  regularisation_method="none",
+                  plotit=True,
+                  isochrones="Padova", tie_balmer=True)
+    sfh_fit = pp.weights_mass_weighted
 
     ###########################################################################
     # COMPARE THE INPUT AND OUTPUT
@@ -1052,7 +1021,7 @@ if __name__ == "__main__":
     ax.set_xticks(range(len(ages)))
     ax.set_xlabel("Age (Myr)")
     ax.set_xticklabels(["{:}".format(age / 1e6) for age in ages], rotation="vertical")
-    axs_sfh[1].autoscale(axis="x", enable=True, tight=True)
-    axs_sfh[1].grid()
+    ax.autoscale(axis="x", enable=True, tight=True)
+    ax.grid()
     fig_sfh.canvas.draw()
 
