@@ -163,16 +163,18 @@ if __name__ == "__main__":
         load_ssp_templates(isochrones)
 
     # Test 2: check binning and convolution function
+    VELSCALE_WIFES = 45.9896038
+    FWHM_WIFES_INST_A = 1.4
     stellar_templates_log, lambda_vals_ssp_log, N_metallicities, N_ages =\
         log_rebin_and_convolve_stellar_templates(isochrones=isochrones, 
                                                  metals_to_use=None, 
                                                  FWHM_inst_A=0, 
-                                                 velscale=40)
+                                                 velscale=VELSCALE_WIFES)
     stellar_templates_log_conv, lambda_vals_ssp_log_conv, N_metallicities, N_ages =\
         log_rebin_and_convolve_stellar_templates(isochrones=isochrones, 
                                                  metals_to_use=None, 
-                                                 FWHM_inst_A=1.0, 
-                                                 velscale=200)
+                                                 FWHM_inst_A=FWHM_WIFES_INST_A, 
+                                                 velscale=VELSCALE_WIFES)
     # Reshape 
     N_lambda = len(lambda_vals_ssp_log)
     N_lambda_conv = len(lambda_vals_ssp_log_conv)
@@ -182,11 +184,20 @@ if __name__ == "__main__":
                                        (N_lambda, N_metallicities, N_ages))
 
     # Check: does convolution affect the template norms?
-    
+    lambda_norm_A = 5000
+    lambda_norm_idx = np.nanargmin(np.abs(np.exp(lambda_vals_ssp_log_conv) - lambda_norm_A))
+    stellar_template_norms_conv = stellar_templates_log_conv[lambda_norm_idx]
+    lambda_norm_A = 5000
+    lambda_norm_idx = np.nanargmin(np.abs(np.exp(lambda_vals_ssp_log) - lambda_norm_A))
+    stellar_template_norms = stellar_templates_log[lambda_norm_idx]
+    fig, ax = plt.subplots()
+    ax.step(x=range(N_ages * N_metallicities), 
+            y=np.abs(stellar_template_norms.flatten() - stellar_template_norms_conv.flatten()) / stellar_template_norms.flatten())
+
 
     # Plot before & after convolution
-    met_idx = 0
-    age_idx = 10
+    met_idx = 1
+    age_idx = 5
     fig, ax = plt.subplots(figsize=(15, 5))
     # Without convolution
     F_lambda = stellar_templates_log[:, met_idx, age_idx]
