@@ -1,5 +1,7 @@
 import os
 import numpy as np
+from scipy import ndimage
+import ppxf.ppxf_util as util
 
 """
 A collection of functions for loading & manipulating the SSP templates.
@@ -64,6 +66,62 @@ def load_ssp_templates(isochrones, metals_to_use=None):
 
     return stellar_templates_linear, lambda_vals_linear, metallicities, ages
 
+###############################################################################
+# Function for logarithmically re-binning the stellar templates 
+###############################################################################
+def log_rebin_and_convolve_stellar_templates(isochrones, metals_to_use, FWHM_inst_A, velscale):
+    """
+    Convenience function for logarithmically rebinning and convolving the 
+    stellar 
+    """
+    # Load the SSP templates
+    stellar_templates_linear, lambda_vals_ssp_linear, metallicities, ages =\
+        load_ssp_templates(isochrones, metals_to_use)
+
+    # Reshape stellar templates so that its dimensions are (N_lambda, N_ages * N_metallicities)
+    N_metallicities = len(metallicities)
+    N_ages = len(ages)
+    N_lambda_ssp_linear = len(lambda_vals_ssp_linear)
+    stellar_templates_linear =\
+        stellar_templates_linear.reshape((N_lambda_ssp_linear, N_ages * N_metallicities))
+
+    # Extract the wavelength range for the logarithmically rebinned templates
+    _, lambda_vals_ssp_log, _ = util.log_rebin(np.array(
+        [lambda_vals_ssp_linear[0], lambda_vals_ssp_linear[-1]]),
+        stellar_templates_linear[:, 0], velscale=velscale)
+    N_lambda_ssp_log = len(lambda_vals_ssp_log)
+
+    # Create an array to store the logarithmically rebinned & convolved spectra in
+    stellar_templates_log_conv = np.zeros((N_lambda_ssp_log, N_ages * N_metallicities))
+
+    # Gonzalez-Delgado spectra have a constant spectral sampling of 0.3 A.
+    dlambda_A_ssp = 0.30
+    FWHM_ssp_A = 2 * np.sqrt(2 * np.log(2)) * dlambda_A_ssp  # This assumes that sigma_diff_px = dlambda_A_ssp.
+    if FWHM_inst_A > 0:
+        FWHM_diff_A = np.sqrt(FWHM_inst_A**2 - FWHM_ssp_A**2)
+        sigma_diff_px = FWHM_diff_A / (2 * np.sqrt(2 * np.log(2))) / dlambda_A_ssp  # sigma_diff_px difference in pixels
+    else:
+        sigma_diff_px = 0
+
+    # Convolve each SSP template to the instrumental resolution 
+    stars_templates_linear_conv = np.zeros(stellar_templates_linear.shape)
+    for ii in range(N_ages * N_metallicities):
+        # Convolve
+        if sigma_diff_px > 0:
+            stars_templates_linear_conv[:, ii] =\
+                ndimage.gaussian_filter1d(stellar_templates_linear[:, ii], sigma_diff_px)
+        else:
+            stars_templates_linear_conv[:, ii] = stellar_templates_linear[:, ii]
+
+        # Logarithmically rebin
+        spec_ssp_log, lambda_vals_ssp_log, velscale_temp =\
+            util.log_rebin(np.array(
+                [lambda_vals_ssp_linear[0], lambda_vals_ssp_linear[-1]]),
+                stars_templates_linear_conv[:, ii],
+                velscale=velscale)
+        stellar_templates_log_conv[:, ii] = spec_ssp_log
+
+    return stellar_templates_log_conv, lambda_vals_ssp_log, N_metallicities, N_ages
 
 ###############################################################################
 # Function for computing the bin widths - useful for computing mean SFR in 
@@ -104,7 +162,46 @@ if __name__ == "__main__":
     stellar_templates_linear, lambda_vals_linear, metallicities, ages =\
         load_ssp_templates(isochrones)
 
-    # Plot a few templates to check that they look as expected 
+    # Test 2: check binning and convolution function
+    stellar_templates_log, lambda_vals_ssp_log, N_metallicities, N_ages =\
+        log_rebin_and_convolve_stellar_templates(isochrones=isochrones, 
+                                                 metals_to_use=None, 
+                                                 FWHM_inst_A=0, 
+                                                 velscale=40)
+    stellar_templates_log_conv, lambda_vals_ssp_log_conv, N_metallicities, N_ages =\
+        log_rebin_and_convolve_stellar_templates(isochrones=isochrones, 
+                                                 metals_to_use=None, 
+                                                 FWHM_inst_A=1.0, 
+                                                 velscale=200)
+    # Reshape 
+    N_lambda = len(lambda_vals_ssp_log)
+    N_lambda_conv = len(lambda_vals_ssp_log_conv)
+    stellar_templates_log_conv = np.reshape(stellar_templates_log_conv, 
+                                            (N_lambda_conv, N_metallicities, N_ages))
+    stellar_templates_log = np.reshape(stellar_templates_log, 
+                                       (N_lambda, N_metallicities, N_ages))
+
+    # Check: does convolution affect the template norms?
+    
+
+    # Plot before & after convolution
+    met_idx = 0
+    age_idx = 10
+    fig, ax = plt.subplots(figsize=(15, 5))
+    # Without convolution
+    F_lambda = stellar_templates_log[:, met_idx, age_idx]
+    ax.plot(np.exp(lambda_vals_ssp_log), F_lambda, color="grey",
+            label=r"Without convolution")
+    # With convolution
+    F_lambda = stellar_templates_log_conv[:, met_idx, age_idx]
+    ax.plot(np.exp(lambda_vals_ssp_log_conv), F_lambda, color="black",
+            label=r"With convolution")
+    ax.set_xlabel(f"Wavelength $\lambda$ (Å)")
+    ax.set_ylabel(r"$F_\lambda(\lambda) / F_\lambda(5000\,Å)$")
+    ax.set_title(r"$Z = %.3f, t = %.2f\,\rm Myr$" % (metallicities[met_idx], ages[age_idx] / 1e6))
+    ax.legend()  
+
+    # Test 1: Plot a few templates to check that they look as expected 
     for met_idx in range(len(metallicities)):
         fig, ax = plt.subplots(figsize=(15, 5))
         lambda_idx = np.nanargmin(np.abs(lambda_vals_linear - 5000))
