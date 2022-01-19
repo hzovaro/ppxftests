@@ -3,7 +3,8 @@ import os
 import numpy as np
 
 from ppxftests.ppxf_plot import plot_sfh_mass_weighted
-from ppxftests.ssputils import load_ssp_templates, get_bin_edges_and_widths
+from ppxftests.ssputils import load_ssp_templates, get_bin_edges_and_widths, log_rebin_and_convolve_stellar_templates
+from ppxftests.mockspec import FWHM_WIFES_INST_A, VELSCALE_WIFES
 
 import matplotlib.pyplot as plt
 from matplotlib.lines import Line2D
@@ -50,6 +51,77 @@ def load_sfh(gal, isochrones="Padova", plotit=False):
 
     return sfh_mw
 
+###########################################################################
+def convert_mass_weights_to_light_weights(sfh_mw, isochrones,
+                                          metals_to_use=None,
+                                          lambda_norm_A=5000,
+                                          FWHM_inst_A=FWHM_WIFES_INST_A,
+                                          velscale=VELSCALE_WIFES):
+    """
+    Mass-weighted template weights essentially indicate the total mass 
+    contributed by each template in a system. Therefore, given that each
+    template represents the spectrum in erg/s of 1 Msun, the weights are 
+    in units of solar masses. Therefore, the total spectrum is given by 
+
+                F = sum w_i * f_i
+
+    where w_i is the mass weight and f_i is the spectrum of template i, 
+    corresponding to a SSP with a total mass of 1 Msun. 
+
+    The weights returned by ppxf are different, due to the necessary 
+    normalisation of the stellar templates and of the input spectrum. The 
+    weights returned by ppxf have the defition
+
+                F / F(lambda_0) = sum w'_i * [f_i / f_i(lambda_0)]
+
+    The mass weights can therefore be derived from the ppxf weights via 
+
+                w_i,MW = w'_i * F(lambda_0) / f_i(lambda_0)
+
+    However, sometimes it is useful to express the weights not by the amount of 
+    mass that each template contributes, but by the amount of light each 
+    template contributes at a specified wavelength. In this case, we can 
+    compute the light-weighted weights via 
+
+                w_i,LW = w'_i * F(lambda_0)
+
+    The light weights essentially tell us how many erg/s/Å each template 
+    contributes at the reference wavelength (lambda_norm_A). Added together,
+    they give the total flux in erg/s/Å in the continuum at the reference
+    wavelength. 
+
+    Therefore, if we have the mass-weighted template weights, we can compute 
+    the light-weighted weights via 
+
+                w_i,LW = w_i,MW * f_i(lambda_0)
+
+    However, to do this requires f_i(lambda_0) for each template. We therefore
+    need to load each template and bin & convolve it in the same way that we
+    need to do in run_ppxf() to compute the normalisation factors.
+
+    """
+
+    # Load the stellar templates, so that we can compute the normalisation
+    # factors for each template
+    stellar_templates, lambda_vals_ssp_log, N_metallicities, N_ages =\
+        log_rebin_and_convolve_stellar_templates(isochrones=isochrones, 
+                                                 metals_to_use=metals_to_use, 
+                                                 FWHM_inst_A=FWHM_inst_A, 
+                                                 velscale=velscale)
+
+    N_lambda = len(lambda_vals_ssp_log)
+    stellar_templates = np.reshape(stellar_templates, 
+                                   (N_lambda, N_metallicities, N_ages))
+
+    # Compute normalisation factors
+    lambda_norm_idx = np.nanargmin(np.abs(np.exp(lambda_vals_ssp_log) - lambda_norm_A))
+    stellar_template_norms = stellar_templates[lambda_norm_idx]
+
+    # Multiply the mass-weighted template weights to get the light weights
+    sfh_lw = sfh_mw * stellar_template_norms
+
+    return sfh_lw
+ 
 ###########################################################################
 def compute_mw_age(sfh_mw, age_thresh, isochrones):
     """
@@ -126,7 +198,7 @@ def compute_sfr_thresh_age(sfh_mw, sfr_thresh, isochrones):
     # Find the first index where the SFR exceed a certain value
     if np.any(sfr_avg > sfr_thresh):
         age_idx = np.argwhere(sfr_avg > sfr_thresh)[0][0]
-        return ages[age_idx], age_idx
+        return np.log10(ages[age_idx]), age_idx
     else:
         return np.nan, np.nan
   
@@ -149,6 +221,8 @@ def compute_sb_zero_age(sfh_mw):
 if __name__ == "__main__":
     # Check that our functions are all working properly
     from ppxftests.ssputils import load_ssp_templates
+    from ppxftests.ppxf_plot import plot_sfh_mass_weighted, plot_sfh_light_weighted
+    from ppxftests.mockspec import create_mock_spectrum
 
     # Load age and metallicity values
     isochrones = "Padova"
@@ -158,12 +232,39 @@ if __name__ == "__main__":
     N_metallicities = len(metallicities)
 
     # Load the SFH
-    gal = 42
-    sfh = load_sfh(gal, isochrones=isochrones, plotit=True)
+    # gal = 42
+    # sfh = load_sfh(gal, isochrones=isochrones, plotit=True)
+    sfh = np.zeros((N_metallicities, N_ages))
+    sfh[1, 5] = 1e9
+
     sfh_1D = np.nansum(sfh, axis=0)
     sfr_avg = sfh_1D / bin_widths
     M_tot = np.nansum(sfh)
 
+    ####################################################################
+    # Test conversion between light weights and mass weights
+    ####################################################################
+    sfh_lw = convert_mass_weights_to_light_weights(sfh, isochrones)
+    plot_sfh_mass_weighted(sfh, ages=ages, metallicities=metallicities)
+    plot_sfh_light_weighted(sfh_lw, ages=ages, metallicities=metallicities)
+
+    spec, spec_err, lambda_vals_wifes_A =\
+        create_mock_spectrum(sfh_mass_weighted=sfh,
+                             agn_continuum=False,
+                             isochrones=isochrones, z=0, SNR=1e10, sigma_star_kms=0.1,
+                             plotit=True)
+
+    # Check: for this simple SFH, the flux in the spectrum at 5000Å
+    # should equal the template weight at [1, 5].
+    # Slight discrepancy (on order of <1% are probably because the WiFeS 
+    # wavelength resolution is coarser than that of the templates, meaning 
+    # the measured flux isn't precisely at 5000Å)
+    print(f"Spectrum: log F(5000Å) = {np.log10(spec[np.nanargmin(np.abs(lambda_vals_wifes_A - 5000))]):.4f}")
+    print(f"Template weight: log w_(1, 5) = {np.log10(sfh_lw[1, 5]):.4f}")
+
+    ####################################################################
+    # Test age estimation methods 
+    ####################################################################
     # Parameters for age estimators
     mass_frac_thresh = 1e-2
     age_thresh = 1e8
