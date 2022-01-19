@@ -38,7 +38,7 @@ def plot_sfh_mass_weighted(sfh_mass_weighted, ages, metallicities,
     
     # Plot the SFH
     sfh_mass_weighted[sfh_mass_weighted == 0] = np.nan
-    cmap = matplotlib.cm.viridis
+    cmap = matplotlib.cm.viridis_r
     cmap.set_bad('#DADADA')
     m = ax.imshow(np.log10(sfh_mass_weighted), cmap=cmap, 
                   origin="lower", aspect="auto")
@@ -78,7 +78,7 @@ def plot_sfh_light_weighted(sfh_light_weighted, ages, metallicities,
     
     # Plot the SFH
     sfh_light_weighted[sfh_light_weighted == 0] = np.nan
-    cmap = matplotlib.cm.viridis
+    cmap = matplotlib.cm.viridis_r
     cmap.set_bad('#DADADA')
     m = ax.imshow(np.log10(sfh_light_weighted), cmap=cmap, 
                   origin="lower", aspect="auto")
