@@ -24,6 +24,7 @@ plt.close("all")
 from IPython.core.debugger import Tracer
 
 FWHM_WIFES_INST_A = 1.4
+VELSCALE_WIFES = 45.9896038
 
 ###############################################################################
 def get_wavelength_from_velocity(lambda_rest, v, units):
