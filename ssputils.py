@@ -121,7 +121,7 @@ def log_rebin_and_convolve_stellar_templates(isochrones, metals_to_use, FWHM_ins
                 velscale=velscale)
         stellar_templates_log_conv[:, ii] = spec_ssp_log
 
-    return stellar_templates_log_conv, lambda_vals_ssp_log, N_metallicities, N_ages
+    return stellar_templates_log_conv, lambda_vals_ssp_log, metallicities, ages
 
 ###############################################################################
 # Function for computing the bin widths - useful for computing mean SFR in 
