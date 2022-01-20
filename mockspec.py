@@ -405,10 +405,6 @@ def create_mock_spectrum(sfh_mass_weighted, isochrones, sigma_star_kms, z, SNR,
         ax.set_ylim([0, None])
         ax.autoscale(enable="True", axis="x", tight=True)
 
-        # Plot the SFH
-        plot_sfh_mass_weighted(sfh_mass_weighted, ages, metallicities)
-        plt.gcf().get_axes()[0].set_title("Input SFH")
-
     ###########################################################################
     # 10. Return.
     return spec, spec_err, lambda_vals_wifes_A
