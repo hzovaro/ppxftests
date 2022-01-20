@@ -288,7 +288,6 @@ def run_ppxf(spec, spec_err, lambda_vals_A,
     # Rebin to a log scale
     spec_log, lambda_vals_log, velscale = util.log_rebin(
         np.array([lambda_start_A, lambda_end_A]), spec_linear)
-    print(velscale)
 
     # Estimate the errors
     spec_err_log = log_rebin_errors(spec_linear, spec_err_linear, lambda_start_A, lambda_end_A)
@@ -357,12 +356,14 @@ def run_ppxf(spec, spec_err, lambda_vals_A,
     ##############################################################################
     # SSP templates
     ##############################################################################
-    stellar_templates_log, lambda_vals_ssp_log, N_metallicities, N_ages =\
+    stellar_templates_log, lambda_vals_ssp_log, metallicities, ages =\
         log_rebin_and_convolve_stellar_templates(isochrones, metals_to_use, 
                                                  FWHM_inst_A=FWHM_WIFES_INST_A, 
                                                  velscale=velscale)
     
     # Regularisation dimensions
+    N_metallicities = len(metallicities)
+    N_ages = len(ages)
     reg_dim = (N_metallicities, N_ages)
 
     # Normalise
@@ -475,7 +476,7 @@ def run_ppxf(spec, spec_err, lambda_vals_A,
     ##############################################################################
     # Wrapper for plotting
     ##############################################################################
-    def plot_wrapper(pp):
+    def plot_wrapper(pp, ages, metallicities):
 
         # Comptue the mass weights 
         N_ages = len(ages)
@@ -568,7 +569,7 @@ def run_ppxf(spec, spec_err, lambda_vals_A,
 
         if plotit:
             plt.close("all")
-            plot_wrapper(pp_age_met)
+            plot_wrapper(pp_age_met, ages, metallicities)
             fig = plt.gcf()
             fig.suptitle(f"First ppxf iteration: regul = 0")
             if savefigs:
@@ -646,7 +647,7 @@ def run_ppxf(spec, spec_err, lambda_vals_A,
 
                 if plotit:
                     plt.close("all")
-                    plot_wrapper(pp_age_met)
+                    plot_wrapper(pp_age_met, ages, metallicities)
                     fig = plt.gcf()
                     fig.suptitle(f"Manually determining regul parameter: regul = {regul:.2f} (iteration {cnt})")
                     if savefigs:
@@ -743,7 +744,7 @@ def run_ppxf(spec, spec_err, lambda_vals_A,
 
             if plotit:
                 # Plot the best fit
-                plot_wrapper(pps[opt_idx])
+                plot_wrapper(pps[opt_idx], ages, metallicities)
                 fig = plt.gcf()
                 fig.suptitle(f"Automatically determining regul parameter: regul = {regul_vals[opt_idx]:.2f} (iteration {1})")
                 if savefigs:
@@ -860,7 +861,7 @@ def run_ppxf(spec, spec_err, lambda_vals_A,
 
                 # Plot the best fit
                 if plotit:
-                    plot_wrapper(pps[opt_idx])
+                    plot_wrapper(pps[opt_idx], ages, metallicities)
                     fig = plt.gcf()
                     fig.suptitle(f"Automatically determining regul parameter: regul = {regul_vals[opt_idx]:.2f} (iteration {cnt})")
                     if savefigs:
@@ -928,7 +929,7 @@ def run_ppxf(spec, spec_err, lambda_vals_A,
     # Plotting the fit
     ##########################################################################
     if plotit:
-        plot_wrapper(pp)
+        plot_wrapper(pp, ages, metallicities)
         fig = plt.gcf()
         if regularisation_method != "none":
             regul_final = regul_vals[opt_idx]
