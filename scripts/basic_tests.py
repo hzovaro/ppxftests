@@ -12,19 +12,18 @@ Save the DataFrame to
 """
 import os
 import numpy as np
-from numpy.random import RandomState
+from tqdm import tqdm
 from time import time 
-from tqdm.notebook import tqdm
+from numpy.random import RandomState
 import multiprocessing
 import pandas as pd
-
-from astropy.io import fits
 
 from ppxftests.run_ppxf import run_ppxf
 from ppxftests.ssputils import load_ssp_templates, get_bin_edges_and_widths
 from ppxftests.mockspec import create_mock_spectrum
 from ppxftests.sfhutils import load_sfh, convert_mass_weights_to_light_weights
-from ppxftests.sfhutils import compute_mw_age, compute_lw_age, compute_sfr_thresh_age, compute_sb_zero_age, compute_mass
+from ppxftests.sfhutils import compute_mw_age, compute_lw_age, compute_sfrw_age, compute_sfr_thresh_age, compute_sb_zero_age, compute_mass
+from ppxftests.sfhutils import compute_mean_1D_sfh, compute_mean_mass, compute_mean_sfr, compute_mean_age, compute_mean_sfr_thresh_age 
 from ppxftests.ppxf_plot import plot_sfh_mass_weighted, plot_sfh_light_weighted
 
 import matplotlib
@@ -41,7 +40,6 @@ fig_path = "/priv/meggs3/u5708159/ppxftests/figs/"
 # Settings
 ###########################################################################
 isochrones = "Padova"
-sigma_star_kms = 300
 SNR = 200
 z = 0.01
 
@@ -56,6 +54,10 @@ sfr_thresh = 1
 gals = list(range(0, 20))
 
 # DataFrame for storing results 
+df_fname = os.path.join(fig_path, "basic_tests", "summary.csv")
+# if os.path.exists(df_fname):
+#     df = pd.read_csv(df_fname)
+# else:
 df = pd.DataFrame(index=gals)
 df.index.name = "ID"
 
@@ -90,85 +92,15 @@ def ppxf_helper(args):
     return pp
 
 ###########################################################################
-# Convenience functions for computing mean quantities from a list of ppxf instances 
-###########################################################################
-def compute_mean_1D_sfh(pp_list, weighttype):
-    """
-    Convenience function for computing the mean SFH given a list of ppxf
-    instances.
-    """
-    assert weighttype == "lw" or weighttype == "mw",\
-        "weighttype must be 'lw' or 'mw'!"
-
-    if weighttype == "lw":
-        sfh_list = [pp.sfh_lw_1D for pp in pp_list]
-    elif weighttype == "mw":
-        sfh_list = [pp.sfh_mw_1D for pp in pp_list]
-    sfh_1D_mean = np.nansum(np.array(sfh_list), axis=0) / len(sfh_list)
-
-    return sfh_1D_mean
-
-def compute_mean_mass(pp_list, age_thresh_lower, age_thresh_upper):
-    """
-    Convenience function for computing the mean & std. dev. of the total mass
-    in the range [age_thresh_lower, age_thresh_upper] given a list of ppxf instances.
-    """
-    sfh_list = [pp.weights_mass_weighted for pp in pp_list]
-    mass_list = [compute_mass(sfh_mw, isochrones, age_thresh_lower, age_thresh_upper) for sfh_mw in sfh_list]
-    mass_mean = np.nanmean(mass_list)
-    mass_std = np.nanstd(mass_list)
-    return mass_mean, mass_std
-
-
-def compute_mean_sfr(pp_list):
-    """
-    Convenience function for computing the mean SFR given a list of ppxf
-    instances.
-    """
-    sfr_list = [pp.sfr_mean for pp in pp_list]
-    sfr_mean = np.nansum(np.array(sfr_list), axis=0) / len(sfr_list)
-    return sfr_mean
-
-def compute_mean_age(pp_list, weighttype, age_thresh_lower, age_thresh_upper):
-    """
-    Convenience function for computing the mean & std. dev. of the mass-
-    weighted age in the range [age_thresh_lower, age_thresh_upper] given 
-    a list of ppxf instances.
-    """
-    assert weighttype == "lw" or weighttype == "mw",\
-        "weighttype must be 'lw' or 'mw'!"
-    
-    if weighttype == "mw":
-        sfh_list = [pp.weights_mass_weighted for pp in pp_list]
-        age_list = [10**compute_mw_age(sfh, isochrones, age_thresh_lower, age_thresh_upper)[0] for sfh in sfh_list]
-        age_mean = np.nanmean(age_list)
-        age_std = np.nanstd(age_list)
-        
-    elif weighttype == "lw":
-        sfh_list = [pp.weights_light_weighted for pp in pp_list]
-        age_list = [10**compute_lw_age(sfh, isochrones, age_thresh_lower, age_thresh_upper)[0] for sfh in sfh_list]
-        age_mean = np.nanmean(age_list)
-        age_std = np.nanstd(age_list)
-    
-    return age_mean, age_std
-
-def compute_mean_sfr_thresh_age(pp_list, sfr_thresh):
-    """
-    Convenience function for computing the mean and std. dev. in the
-    SFR threshold age from a list of ppxf instances.
-    """
-    sfr_age_list = [10**compute_sfr_thresh_age(pp.weights_mass_weighted, sfr_thresh, isochrones)[0] for pp in pp_list]
-    sfr_age_mean = np.nanmean(sfr_age_list)
-    sfr_age_std = np.nanstd(sfr_age_list)
-
-    return sfr_age_mean, sfr_age_std
-
-###########################################################################
 # Define the SFH
 ###########################################################################
-for gal in gals[:1]:
+for gal in range(20, 1100):
+    # Load the SFH
+    try:
+        sfh_mw_input, sfh_lw_input, sfr_avg_input, sigma_star_kms = load_sfh(gal=gal, plotit=False)
+    except:
+        continue
 
-    sfh_mw_input, sfh_lw_input, sfr_avg_input = load_sfh(gal=gal, plotit=True)
     sfh_mw_1D_input = np.nansum(sfh_mw_input, axis=0)
     sfh_lw_1D_input = np.nansum(sfh_lw_input, axis=0)
 
@@ -191,11 +123,13 @@ for gal in gals[:1]:
         # Compute mass- and light-weighted mean ages, and the total mass too
         age_mw_input = 10**compute_mw_age(sfh_mw_input, isochrones=isochrones, age_thresh_lower=age_thresh_lower, age_thresh_upper=age_thresh_upper)[0]
         age_lw_input = 10**compute_lw_age(sfh_lw_input, isochrones=isochrones, age_thresh_lower=age_thresh_lower, age_thresh_upper=age_thresh_upper)[0]
+        age_sfrw_input = 10**compute_lw_age(sfr_avg_input, isochrones=isochrones, age_thresh_lower=age_thresh_lower, age_thresh_upper=age_thresh_upper)[0]
         mass = compute_mass(sfh_mw_input, isochrones=isochrones, age_thresh_lower=age_thresh_lower, age_thresh_upper=age_thresh_upper)
         
         # Store in DataFrame
         df.loc[gal, f"MW age {np.log10(age_thresh_lower):.2f} < log t < {np.log10(age_thresh_upper):.2f} (truth)"] = age_mw_input
         df.loc[gal, f"LW age {np.log10(age_thresh_lower):.2f} < log t < {np.log10(age_thresh_upper):.2f} (truth)"] = age_lw_input
+        df.loc[gal, f"SFRW age {np.log10(age_thresh_lower):.2f} < log t < {np.log10(age_thresh_upper):.2f} (truth)"] = age_sfrw_input
         df.loc[gal, f"Mass {np.log10(age_thresh_lower):.2f} < log t < {np.log10(age_thresh_upper):.2f} (truth)"] = mass
 
     ###########################################################################
@@ -225,12 +159,12 @@ for gal in gals[:1]:
     # Compute average quantities from the MC simulations
     ###########################################################################
     # Compute the mean SFH and SFR from the lists of MC runs
-    sfh_MC_lw_1D_mean = compute_mean_1D_sfh(pp_list, "lw")
-    sfh_MC_mw_1D_mean = compute_mean_1D_sfh(pp_list, "mw")
-    sfr_avg_MC = compute_mean_sfr(pp_list)
+    sfh_MC_lw_1D_mean = compute_mean_1D_sfh(pp_list, isochrones, "lw")
+    sfh_MC_mw_1D_mean = compute_mean_1D_sfh(pp_list, isochrones, "mw")
+    sfr_avg_MC = compute_mean_sfr(pp_list, isochrones)
 
     # Compute the "SFR age"
-    age_sfr_mean, age_sfr_std = compute_mean_sfr_thresh_age(pp_list, sfr_thresh)
+    age_sfr_mean, age_sfr_std = compute_mean_sfr_thresh_age(pp_list, isochrones, sfr_thresh)
     df.loc[gal, f"SFR age (>{sfr_thresh} Msun yr^-1) (MC) mean"] = age_sfr_mean
     df.loc[gal, f"SFR age (>{sfr_thresh} Msun yr^-1) (MC) std. dev."] = age_sfr_std
 
@@ -245,16 +179,19 @@ for gal in gals[:1]:
             age_thresh_upper = ages[-1]
             
         # Compute the mean mass- and light-weighted ages plus the total mass in this age range
-        age_lw_mean, age_lw_std = compute_mean_age(pp_list, "lw", age_thresh_lower, age_thresh_upper)
-        age_mw_mean, age_mw_std = compute_mean_age(pp_list, "mw", age_thresh_lower, age_thresh_upper)
-        mass_mean, mass_std = compute_mean_mass(pp_list, age_thresh_lower=age_thresh_lower, age_thresh_upper=age_thresh_upper)
+        age_lw_mean, age_lw_std = compute_mean_age(pp_list, isochrones, "lw", age_thresh_lower, age_thresh_upper)
+        age_mw_mean, age_mw_std = compute_mean_age(pp_list, isochrones, "mw", age_thresh_lower, age_thresh_upper)
+        age_sfrw_mean, age_sfrw_std = compute_mean_age(pp_list, isochrones, "sfrw", age_thresh_lower, age_thresh_upper)
+        mass_mean, mass_std = compute_mean_mass(pp_list, isochrones, age_thresh_lower=age_thresh_lower, age_thresh_upper=age_thresh_upper)
 
         # Put in DataFrame
         df.loc[gal, f"MW age {np.log10(age_thresh_lower):.2f} < log t < {np.log10(age_thresh_upper):.2f} (MC) mean"] = age_mw_mean
         df.loc[gal, f"LW age {np.log10(age_thresh_lower):.2f} < log t < {np.log10(age_thresh_upper):.2f} (MC) mean"] = age_lw_mean
+        df.loc[gal, f"SFRW age {np.log10(age_thresh_lower):.2f} < log t < {np.log10(age_thresh_upper):.2f} (MC) mean"] = age_sfrw_mean
         df.loc[gal, f"Mass {np.log10(age_thresh_lower):.2f} < log t < {np.log10(age_thresh_upper):.2f} (MC) mean"] = mass_mean
         df.loc[gal, f"MW age {np.log10(age_thresh_lower):.2f} < log t < {np.log10(age_thresh_upper):.2f} (MC) std. dev."] = age_mw_std
         df.loc[gal, f"LW age {np.log10(age_thresh_lower):.2f} < log t < {np.log10(age_thresh_upper):.2f} (MC) std. dev."] = age_lw_std
+        df.loc[gal, f"SFRW age {np.log10(age_thresh_lower):.2f} < log t < {np.log10(age_thresh_upper):.2f} (MC) std. dev."] = age_sfrw_std
         df.loc[gal, f"Mass {np.log10(age_thresh_lower):.2f} < log t < {np.log10(age_thresh_upper):.2f} (MC) std. dev."] = mass_std
 
     ###########################################################################
@@ -296,11 +233,13 @@ for gal in gals[:1]:
         # Compute mass- and light-weighted mean ages, and the total mass too
         age_mw_regul = 10**compute_mw_age(sfh_regul_lw_1D, isochrones=isochrones, age_thresh_lower=age_thresh_lower, age_thresh_upper=age_thresh_upper)[0]
         age_lw_regul = 10**compute_lw_age(sfh_regul_mw_1D, isochrones=isochrones, age_thresh_lower=age_thresh_lower, age_thresh_upper=age_thresh_upper)[0]
+        age_sfrw_regul = 10**compute_sfrw_age(sfr_avg_regul, isochrones=isochrones, age_thresh_lower=age_thresh_lower, age_thresh_upper=age_thresh_upper)[0]
         mass_regul = compute_mass(sfh_regul_mw_1D, isochrones=isochrones, age_thresh_lower=age_thresh_lower, age_thresh_upper=age_thresh_upper)
         
         # Store in DataFrame
         df.loc[gal, f"MW age {np.log10(age_thresh_lower):.2f} < log t < {np.log10(age_thresh_upper):.2f} (regul)"] = age_mw_regul
         df.loc[gal, f"LW age {np.log10(age_thresh_lower):.2f} < log t < {np.log10(age_thresh_upper):.2f} (regul)"] = age_lw_regul
+        df.loc[gal, f"SFRW age {np.log10(age_thresh_lower):.2f} < log t < {np.log10(age_thresh_upper):.2f} (regul)"] = age_sfrw_regul
         df.loc[gal, f"Mass {np.log10(age_thresh_lower):.2f} < log t < {np.log10(age_thresh_upper):.2f} (regul)"] = mass_regul
 
     ###########################################################################
@@ -393,6 +332,22 @@ for gal in gals[:1]:
                         marker="X", mfc="lightblue", mec="blue", ecolor="lightblue", linestyle="none",
                         label="Mean LW age in range (input)" if aa == 0 else None)
 
+            # light-weighted age
+            y = 10**(0.6 * (np.log10(y2) - np.log10(y1)) + np.log10(y1)) if log_scale else 0.7 * y2
+            ax.errorbar(x=df.loc[gal, f"SFRW age {np.log10(age_thresh_lower):.2f} < log t < {np.log10(age_thresh_upper):.2f} (MC) mean"],
+                        xerr=df.loc[gal, f"SFRW age {np.log10(age_thresh_lower):.2f} < log t < {np.log10(age_thresh_upper):.2f} (MC) std. dev."],
+                        y=y,
+                        marker="o", mfc="red", mec="red", ecolor="red", linestyle="none", capsize=10,
+                        label="Mean SFRW age in range (MC simulations)" if aa == 0 else None)
+            ax.errorbar(x=df.loc[gal, f"SFRW age {np.log10(age_thresh_lower):.2f} < log t < {np.log10(age_thresh_upper):.2f} (regul)"], xerr=0,
+                        y=y,
+                        marker="o", mfc="lightgreen", mec="green", ecolor="green", linestyle="none",
+                        label="Mean SFRW age in range (regularised fit)" if aa == 0 else None)
+            ax.errorbar(x=df.loc[gal, f"SFRW age {np.log10(age_thresh_lower):.2f} < log t < {np.log10(age_thresh_upper):.2f} (truth)"], xerr=0,
+                        y=y,
+                        marker="o", mfc="lightblue", mec="blue", ecolor="lightblue", linestyle="none",
+                        label="Mean SFRW age in range (input)" if aa == 0 else None)
+
             ax.axvline(age_thresh_lower, color="black", linestyle="--", label="Age range" if aa == 0 else None)
             ax.axvline(age_thresh_upper, color="black", linestyle="--")
 
@@ -409,4 +364,4 @@ for gal in gals[:1]:
 
     # Save DataFrame to file 
     # Do this every iteration in case it breaks! 
-    df.to_csv(os.path.join(fig_path, "basic_tests", "summary.csv"))
+    df.to_csv(df_fname)
