@@ -95,6 +95,36 @@ def plot_sfh_light_weighted(sfh_light_weighted, ages, metallicities,
     
     return
 
+###############################################################################
+def plot_sfr(sfr_mean, ages, metallicities, 
+             ax=None):
+    """
+    A handy function for making a nice plot of the mean SFR in each age bin.
+    """
+    assert len(sfr_mean) == len(ages),\
+        "The first dimension of sfr_mean must be equal to the number of ages!"
+
+    # Create figure
+    if ax is None:
+        # fig, ax = plt.subplots(nrows=1, ncols=1, figsize=(10, 3.5))
+        fig = plt.figure(figsize=(10, 3.5))
+        ax = fig.add_axes([0.1, 0.25, 0.8, 0.65])
+    else:
+        fig = ax.get_figure()
+    # Plot the SFH
+    ax.step(x=range(len(ages)), y=sfr_mean, color="black", where="mid")
+    
+    # Decorations
+    ax.grid()
+    ax.set_yscale("log")
+    ax.set_ylabel(r"Mean SFR ($\log_{10} \, \rm M_\odot \, yr^{-1}$)")
+    ax.set_xticks(range(len(ages)))
+    ax.set_xlabel("Age (Myr)")
+    ax.set_xticklabels(["{:}".format(age / 1e6) for age in ages], rotation="vertical", fontsize="x-small")
+    ax.autoscale(axis="x", tight=True, enable=True)
+    
+    return
+
 
 ###############################################################################
 def ppxf_plot(pp, ax=None):
