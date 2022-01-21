@@ -1,8 +1,9 @@
 # Imports
 import os 
 import numpy as np
+import pandas as pd
 
-from ppxftests.ppxf_plot import plot_sfh_mass_weighted
+from ppxftests.ppxf_plot import plot_sfh_mass_weighted, plot_sfh_light_weighted, plot_sfr
 from ppxftests.ssputils import load_ssp_templates, get_bin_edges_and_widths, log_rebin_and_convolve_stellar_templates
 from ppxftests.mockspec import FWHM_WIFES_INST_A, VELSCALE_WIFES
 
@@ -19,14 +20,48 @@ bin_edges_padova, bin_widths_padova = get_bin_edges_and_widths(isochrones="Padov
 bin_edges_geneva, bin_widths_geneva = get_bin_edges_and_widths(isochrones="Geneva")
 
 ###########################################################################
+def make_gal_info_df():
+    """
+    Create a Pandas DataFrame containing the SMBH masses and Eddington 
+    ratios for each galaxy, primarily so we can estimate stellar velocity
+    dispersions using the M - sigma relation.
+    """
+    abspath = __file__.split("/sfhutils.py")[0]
+
+    # Eddington ratios
+    df_edd = pd.read_csv(os.path.join(abspath, "sim_galaxies", "eddratio.txt"))
+
+    # BH masses
+    df_mbh = pd.read_csv(os.path.join(abspath, "sim_galaxies", "mbh.txt"))
+
+    # Merge
+    df = df_edd.merge(df_mbh, right_index=True, left_index=True)
+    df.index.name = "ID"
+
+    # Compute stellar velocity dispersions for each galaxy
+    # M_BH - sigma_* relation taken from Gültekin+2009
+    # https://arxiv.org/pdf/0903.4897.pdf
+    alpha = 8.12
+    beta = 4.24
+    df["sigma_* (km/s)"] = 200 * 10**(1 / beta * (np.log10(df["M_BH"]) - alpha))
+
+    # Save to file 
+    df.to_csv(os.path.join(abspath, "sim_galaxies", "gal_metadata.csv"))
+
+    return
+
+###########################################################################
 def load_sfh(gal, isochrones="Padova", plotit=False):
     """
     Load a SFH from one of Phil's simulated galaxies.
+    Return both mass-weighted and light-weighted template weights, where 
+    the light-weighted template weights are computed assuming a reference
+    wavelength of 5000 Å and instrumental parameters corresponding to WiFeS.
     """
     assert isochrones == "Padova", "for now, isochrones must be 'Padova'!"
     assert type(gal) == int, f"gal must be an integer!"
     abspath = __file__.split("/sfhutils.py")[0]
-    fname = os.path.join(abspath, "SFHs", f"SFH_ga{gal:04}.dat")
+    fname = os.path.join(abspath, "sim_galaxies", "SFHs", f"SFH_ga{gal:04}.dat")
     assert os.path.exists(fname), f"SFH file {fname} not found!"
 
     # Load the file 
@@ -44,12 +79,32 @@ def load_sfh(gal, isochrones="Padova", plotit=False):
     assert sfh_mw.shape[1] == len(ages),\
         f"Loaded SFH has first dimension {sfh_mw.shape[1]} but should have dimension {len(ages)} for the {isochrones} isochrones!"
 
+    # Convert mass weights to light weights 
+    sfh_lw = convert_mass_weights_to_light_weights(sfh_mw, isochrones=isochrones)
+
+    # Compute the bin edges and widths so that we can compute the mean SFR in each bin
+    if isochrones == "Padova":
+        bin_edges, bin_widths, ages = bin_edges_padova, bin_widths_padova, ages_padova
+    elif isochrones == "Geneva":
+        bin_edges, bin_widths, ages = bin_edges_geneva, bin_widths_geneva, ages_geneva
+
+    # Compute the mean SFR in each bin
+    sfr_avg = np.nansum(sfh_mw, axis=0) / bin_widths
+
+    # Get the stellar velocity dispersion 
+    df_metadata = pd.read_csv(os.path.join(abspath, "sim_galaxies", "gal_metadata.csv"))
+    sigma_star_kms = df_metadata.loc[gal, "sigma_* (km/s)"]
+
     # Plot the SFH
     if plotit:
         plot_sfh_mass_weighted(sfh_mw, ages, metallicities)
         plt.gcf().get_axes()[0].set_title(f"Galaxy {gal:004} " + r"- $M_{\rm tot} = %.4e\,\rm M_\odot$" % M_tot)
+        plot_sfh_light_weighted(sfh_lw, ages, metallicities)
+        plt.gcf().get_axes()[0].set_title(f"Galaxy {gal:004} " + r"- $M_{\rm tot} = %.4e\,\rm M_\odot$" % M_tot)
+        plot_sfr(sfr_avg, ages, metallicities)
+        plt.gcf().get_axes()[0].set_title(f"Galaxy {gal:004} " + r"- $M_{\rm tot} = %.4e\,\rm M_\odot$" % M_tot)
 
-    return sfh_mw
+    return sfh_mw, sfh_lw, sfr_avg, sigma_star_kms
 
 ###########################################################################
 def convert_mass_weights_to_light_weights(sfh_mw, isochrones,
@@ -103,12 +158,14 @@ def convert_mass_weights_to_light_weights(sfh_mw, isochrones,
 
     # Load the stellar templates, so that we can compute the normalisation
     # factors for each template
-    stellar_templates, lambda_vals_ssp_log, N_metallicities, N_ages =\
+    stellar_templates, lambda_vals_ssp_log, metallicities, ages =\
         log_rebin_and_convolve_stellar_templates(isochrones=isochrones, 
                                                  metals_to_use=metals_to_use, 
                                                  FWHM_inst_A=FWHM_inst_A, 
                                                  velscale=velscale)
 
+    N_metallicities = len(metallicities)
+    N_ages = len(ages)
     N_lambda = len(lambda_vals_ssp_log)
     stellar_templates = np.reshape(stellar_templates, 
                                    (N_lambda, N_metallicities, N_ages))
@@ -123,7 +180,33 @@ def convert_mass_weights_to_light_weights(sfh_mw, isochrones,
     return sfh_lw
  
 ###########################################################################
-def compute_mw_age(sfh_mw, age_thresh, isochrones):
+def compute_mass(sfh_mw, isochrones,
+                 age_thresh_lower=None,
+                 age_thresh_upper=None):
+    """
+    Given a SFH, compute the total mass in a specified age range.
+    """
+    # Sum the SFH over the metallicity dimension to get the 1D SFH
+    sfh_mw_1D = np.nansum(sfh_mw, axis=0) if sfh_mw.ndim > 1 else sfh_mw
+
+    ages = ages_padova if isochrones == "Padova" else ages_geneva
+    if age_thresh_lower is None:
+        age_thresh_lower = ages[0]
+    if age_thresh_upper is None: 
+        age_thresh_upper = ages[-1]
+
+    # Find the index of the threshold age in the template age array
+    age_thresh_lower_idx = np.nanargmin(np.abs(ages - age_thresh_lower))
+    age_thresh_upper_idx = np.nanargmin(np.abs(ages - age_thresh_upper))
+
+    M = np.nansum(sfh_mw_1D[age_thresh_lower_idx:age_thresh_upper_idx])
+
+    return M
+
+###########################################################################
+def compute_mw_age(sfh_mw, isochrones,
+                   age_thresh_lower=None,
+                   age_thresh_upper=None):
     """
     A function for computing the mass-weighted age from a star-formation
     history. 
@@ -135,21 +218,56 @@ def compute_mw_age(sfh_mw, age_thresh, isochrones):
     sfh_mw_1D = np.nansum(sfh_mw, axis=0) if sfh_mw.ndim > 1 else sfh_mw
 
     ages = ages_padova if isochrones == "Padova" else ages_geneva
+    if age_thresh_lower is None:
+        age_thresh_lower = ages[0]
+    if age_thresh_upper is None: 
+        age_thresh_upper = ages[-1]
 
     # Find the index of the threshold age in the template age array
-    age_thresh_idx = np.nanargmin(np.abs(ages - age_thresh))
+    age_thresh_lower_idx = np.nanargmin(np.abs(ages - age_thresh_lower))
+    age_thresh_upper_idx = np.nanargmin(np.abs(ages - age_thresh_upper))
     
     # Compute the mass-weighted age 
-    log_age_mw = np.nansum(sfh_mw_1D[:age_thresh_idx] * np.log10(ages[:age_thresh_idx])) / np.nansum(sfh_mw_1D[:age_thresh_idx])
+    log_age_mw = np.nansum(sfh_mw_1D[age_thresh_lower_idx:age_thresh_upper_idx] * np.log10(ages[age_thresh_lower_idx:age_thresh_upper_idx])) / np.nansum(sfh_mw_1D[age_thresh_lower_idx:age_thresh_upper_idx])
     
     # Compute the corresponding index in the array (useful for plotting)
     log_age_mw_idx = (log_age_mw - np.log10(ages[0])) / (np.log10(ages[1]) - np.log10(ages[0]))
     
     return log_age_mw, log_age_mw_idx
 
+###########################################################################
+def compute_sfrw_age(sfr_avg, isochrones,
+                     age_thresh_lower=None,
+                     age_thresh_upper=None):
+    """
+    A function for computing the SFR-weighted age from a star-formation
+    history. 
+    """
+    assert isochrones in ["Padova", "Geneva"],\
+        "isochrones must be either 'Padova' or 'Geneva'!"
+
+    ages = ages_padova if isochrones == "Padova" else ages_geneva
+    if age_thresh_lower is None:
+        age_thresh_lower = ages[0]
+    if age_thresh_upper is None: 
+        age_thresh_upper = ages[-1]
+
+    # Find the index of the threshold age in the template age array
+    age_thresh_lower_idx = np.nanargmin(np.abs(ages - age_thresh_lower))
+    age_thresh_upper_idx = np.nanargmin(np.abs(ages - age_thresh_upper))
+    
+    # Compute the mass-weighted age 
+    log_age_sfrw = np.nansum(sfr_avg[age_thresh_lower_idx:age_thresh_upper_idx] * np.log10(ages[age_thresh_lower_idx:age_thresh_upper_idx])) / np.nansum(sfr_avg[age_thresh_lower_idx:age_thresh_upper_idx])
+    
+    # Compute the corresponding index in the array (useful for plotting)
+    log_age_sfrw_idx = (log_age_sfrw - np.log10(ages[0])) / (np.log10(ages[1]) - np.log10(ages[0]))
+    
+    return log_age_sfrw, log_age_sfrw_idx
 
 ###########################################################################
-def compute_lw_age(sfh_lw, age_thresh, isochrones):
+def compute_lw_age(sfh_lw, isochrones,
+                   age_thresh_lower=None,
+                   age_thresh_upper=None):
     """
     A function for computing the mass-weighted age from a star-formation
     history. 
@@ -161,12 +279,17 @@ def compute_lw_age(sfh_lw, age_thresh, isochrones):
     sfh_lw_1D = np.nansum(sfh_lw, axis=0) if sfh_lw.ndim > 1 else sfh_lw
 
     ages = ages_padova if isochrones == "Padova" else ages_geneva
+    if age_thresh_lower is None:
+        age_thresh_lower = ages[0]
+    if age_thresh_upper is None: 
+        age_thresh_upper = ages[-1]
 
     # Find the index of the threshold age in the template age array
-    age_thresh_idx = np.nanargmin(np.abs(ages - age_thresh))
+    age_thresh_lower_idx = np.nanargmin(np.abs(ages - age_thresh_lower))
+    age_thresh_upper_idx = np.nanargmin(np.abs(ages - age_thresh_upper))
     
     # Compute the light-weighted age 
-    log_age_lw = np.nansum(sfh_lw_1D[:age_thresh_idx] * np.log10(ages[:age_thresh_idx])) / np.nansum(sfh_lw_1D[:age_thresh_idx])
+    log_age_lw = np.nansum(sfh_lw_1D[age_thresh_lower_idx:age_thresh_upper_idx] * np.log10(ages[age_thresh_lower_idx:age_thresh_upper_idx])) / np.nansum(sfh_lw_1D[age_thresh_lower_idx:age_thresh_upper_idx])
     
     # Compute the corresponding index in the array (useful for plotting)
     log_age_lw_idx = (log_age_lw - np.log10(ages[0])) / (np.log10(ages[1]) - np.log10(ages[0]))
@@ -203,19 +326,123 @@ def compute_sfr_thresh_age(sfh_mw, sfr_thresh, isochrones):
         return np.nan, np.nan
   
 ###########################################################################
-def compute_sb_zero_age(sfh_mw):
+def compute_sb_zero_age(sfh_mw, isochrones):
     """
 
     """
     # Sum the SFH over the metallicity dimension to get the 1D SFH
     sfh_mw_1D = np.nansum(sfh_mw, axis=0) if sfh_mw.ndim > 1 else sfh_mw
-        
+
+    if isochrones == "Padova":
+        ages = ages_padova
+    elif isochrones == "Geneva":
+        ages = ages_geneva
+
     first_nonzero_idx = np.argwhere(sfh_mw_1D > 0)[0][0]
     if np.any(sfh_mw_1D[first_nonzero_idx:] == 0):
         first_zero_idx = np.argwhere(sfh_mw_1D[first_nonzero_idx:] == 0)[0][0] + first_nonzero_idx
-        return ages[first_zero_idx], first_zero_idx
+        return np.log10(ages[first_zero_idx]), first_zero_idx
     else:
         return np.nan, np.nan
+
+
+###########################################################################
+# Convenience functions for computing mean quantities from a list of ppxf instances 
+###########################################################################
+def compute_mean_1D_sfh(pp_list, isochrones, weighttype):
+
+    """
+    Convenience function for computing the mean SFH given a list of ppxf
+    instances.
+    """
+    assert isochrones in ["Padova", "Geneva"],\
+        "isochrones must be either 'Padova' or 'Geneva'!"
+    assert weighttype == "lw" or weighttype == "mw",\
+        "weighttype must be 'lw' or 'mw'!"
+
+    if weighttype == "lw":
+        sfh_list = [pp.sfh_lw_1D for pp in pp_list]
+    elif weighttype == "mw":
+        sfh_list = [pp.sfh_mw_1D for pp in pp_list]
+    sfh_1D_mean = np.nansum(np.array(sfh_list), axis=0) / len(sfh_list)
+
+    return sfh_1D_mean
+
+def compute_mean_mass(pp_list, isochrones, age_thresh_lower, age_thresh_upper):
+
+    """
+    Convenience function for computing the mean & std. dev. of the total mass
+    in the range [age_thresh_lower, age_thresh_upper] given a list of ppxf instances.
+    """
+    assert isochrones in ["Padova", "Geneva"],\
+        "isochrones must be either 'Padova' or 'Geneva'!"
+
+    sfh_list = [pp.weights_mass_weighted for pp in pp_list]
+    mass_list = [compute_mass(sfh_mw, isochrones, age_thresh_lower, age_thresh_upper) for sfh_mw in sfh_list]
+    mass_mean = np.nanmean(mass_list)
+    mass_std = np.nanstd(mass_list)
+    return mass_mean, mass_std
+
+
+def compute_mean_sfr(pp_list, isochrones):
+
+    """
+    Convenience function for computing the mean SFR given a list of ppxf
+    instances.
+    """
+    assert isochrones in ["Padova", "Geneva"],\
+        "isochrones must be either 'Padova' or 'Geneva'!"
+
+    sfr_list = [pp.sfr_mean for pp in pp_list]
+    sfr_mean = np.nansum(np.array(sfr_list), axis=0) / len(sfr_list)
+    return sfr_mean
+
+def compute_mean_age(pp_list, isochrones, weighttype, age_thresh_lower, age_thresh_upper):
+
+    """
+    Convenience function for computing the mean & std. dev. of the mass-
+    weighted age in the range [age_thresh_lower, age_thresh_upper] given 
+    a list of ppxf instances.
+    """
+    assert isochrones in ["Padova", "Geneva"],\
+        "isochrones must be either 'Padova' or 'Geneva'!"
+    assert weighttype == "lw" or weighttype == "mw" or weighttype == "sfrw",\
+        "weighttype must be 'lw' or 'mw'!"
+    
+    if weighttype == "mw":
+        sfh_list = [pp.weights_mass_weighted for pp in pp_list]
+        age_list = [10**compute_mw_age(sfh, isochrones, age_thresh_lower, age_thresh_upper)[0] for sfh in sfh_list]
+        age_mean = np.nanmean(age_list)
+        age_std = np.nanstd(age_list)
+        
+    elif weighttype == "lw":
+        sfh_list = [pp.weights_light_weighted for pp in pp_list]
+        age_list = [10**compute_lw_age(sfh, isochrones, age_thresh_lower, age_thresh_upper)[0] for sfh in sfh_list]
+        age_mean = np.nanmean(age_list)
+        age_std = np.nanstd(age_list)
+
+    elif weighttype == "sfrw":
+        sfr_avg_list = [pp.sfr_mean for pp in pp_list]
+        age_list = [10**compute_sfrw_age(sfr_avg, isochrones, age_thresh_lower, age_thresh_upper)[0] for sfr_avg in sfr_avg_list]
+        age_mean = np.nanmean(age_list)
+        age_std = np.nanstd(age_list)
+    
+    return age_mean, age_std
+
+def compute_mean_sfr_thresh_age(pp_list, isochrones, sfr_thresh):
+
+    """
+    Convenience function for computing the mean and std. dev. in the
+    SFR threshold age from a list of ppxf instances.
+    """
+    assert isochrones in ["Padova", "Geneva"],\
+        "isochrones must be either 'Padova' or 'Geneva'!"
+    sfr_age_list = [10**compute_sfr_thresh_age(pp.weights_mass_weighted, sfr_thresh, isochrones)[0] for pp in pp_list]
+    sfr_age_mean = np.nanmean(sfr_age_list)
+    sfr_age_std = np.nanstd(sfr_age_list)
+
+    return sfr_age_mean, sfr_age_std
+
 
 ###########################################################################
 if __name__ == "__main__":
