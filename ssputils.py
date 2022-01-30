@@ -184,10 +184,10 @@ if __name__ == "__main__":
                                        (N_lambda, N_metallicities, N_ages))
 
     # Check: does convolution affect the template norms?
-    lambda_norm_A = 5000
+    lambda_norm_A = 4020
     lambda_norm_idx = np.nanargmin(np.abs(np.exp(lambda_vals_ssp_log_conv) - lambda_norm_A))
     stellar_template_norms_conv = stellar_templates_log_conv[lambda_norm_idx]
-    lambda_norm_A = 5000
+    lambda_norm_A = 4020
     lambda_norm_idx = np.nanargmin(np.abs(np.exp(lambda_vals_ssp_log) - lambda_norm_A))
     stellar_template_norms = stellar_templates_log[lambda_norm_idx]
     fig, ax = plt.subplots()
@@ -208,21 +208,21 @@ if __name__ == "__main__":
     ax.plot(np.exp(lambda_vals_ssp_log_conv), F_lambda, color="black",
             label=r"With convolution")
     ax.set_xlabel(f"Wavelength $\lambda$ (Å)")
-    ax.set_ylabel(r"$F_\lambda(\lambda) / F_\lambda(5000\,Å)$")
+    ax.set_ylabel(r"$F_\lambda(\lambda) / F_\lambda(4020\,Å)$")
     ax.set_title(r"$Z = %.3f, t = %.2f\,\rm Myr$" % (metallicities[met_idx], ages[age_idx] / 1e6))
     ax.legend()  
 
     # Test 1: Plot a few templates to check that they look as expected 
     for met_idx in range(len(metallicities)):
         fig, ax = plt.subplots(figsize=(15, 5))
-        lambda_idx = np.nanargmin(np.abs(lambda_vals_linear - 5000))
+        lambda_idx = np.nanargmin(np.abs(lambda_vals_linear - 4020))
         for age_idx in [0, 10, 25, -1]:
             F_lambda = stellar_templates_linear[:, met_idx, age_idx]
             F_lambda /= F_lambda[lambda_idx]
             ax.plot(lambda_vals_linear, F_lambda,
                     label=r"$Z = %.3f, t = %.2f\,\rm Myr$" % (metallicities[met_idx], ages[age_idx] / 1e6))
         ax.set_xlabel(f"Wavelength $\lambda$ (Å)")
-        ax.set_ylabel(r"$F_\lambda(\lambda) / F_\lambda(5000\,Å)$")
+        ax.set_ylabel(r"$F_\lambda(\lambda) / F_\lambda(4020\,Å)$")
         ax.legend()  
 
     # Check that the bin sizes are correct

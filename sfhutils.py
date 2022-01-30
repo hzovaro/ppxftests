@@ -56,7 +56,7 @@ def load_sfh(gal, isochrones="Padova", plotit=False):
     Load a SFH from one of Phil's simulated galaxies.
     Return both mass-weighted and light-weighted template weights, where 
     the light-weighted template weights are computed assuming a reference
-    wavelength of 5000 Å and instrumental parameters corresponding to WiFeS.
+    wavelength of 4020 Å and instrumental parameters corresponding to WiFeS.
     """
     assert isochrones == "Padova", "for now, isochrones must be 'Padova'!"
     assert type(gal) == int, f"gal must be an integer!"
@@ -109,7 +109,7 @@ def load_sfh(gal, isochrones="Padova", plotit=False):
 ###########################################################################
 def convert_mass_weights_to_light_weights(sfh_mw, isochrones,
                                           metals_to_use=None,
-                                          lambda_norm_A=5000,
+                                          lambda_norm_A=4020,
                                           FWHM_inst_A=FWHM_WIFES_INST_A,
                                           velscale=VELSCALE_WIFES):
     """
@@ -481,12 +481,12 @@ if __name__ == "__main__":
                              isochrones=isochrones, z=0, SNR=1e10, sigma_star_kms=0.1,
                              plotit=True)
 
-    # Check: for this simple SFH, the flux in the spectrum at 5000Å
+    # Check: for this simple SFH, the flux in the spectrum at 4020Å
     # should equal the template weight at [1, 5].
     # Slight discrepancy (on order of <1% are probably because the WiFeS 
     # wavelength resolution is coarser than that of the templates, meaning 
-    # the measured flux isn't precisely at 5000Å)
-    print(f"Spectrum: log F(5000Å) = {np.log10(spec[np.nanargmin(np.abs(lambda_vals_wifes_A - 5000))]):.4f}")
+    # the measured flux isn't precisely at 4020Å)
+    print(f"Spectrum: log F(4020Å) = {np.log10(spec[np.nanargmin(np.abs(lambda_vals_wifes_A - 4020))]):.4f}")
     print(f"Template weight: log w_(1, 5) = {np.log10(sfh_lw[1, 5]):.4f}")
 
     ####################################################################

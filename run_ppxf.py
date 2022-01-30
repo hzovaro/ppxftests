@@ -210,7 +210,7 @@ def run_ppxf(spec, spec_err, lambda_vals_A,
              fit_gas=True,
              FWHM_inst_A=FWHM_WIFES_INST_A,
              bad_pixel_ranges_A=[],
-             lambda_norm_A=5000,
+             lambda_norm_A=4020,
              regularisation_method="auto",
              auto_adjust_regul=False, regul_nthreads=20,
              delta_regul_min=5, regul_max=1e4,
@@ -466,7 +466,7 @@ def run_ppxf(spec, spec_err, lambda_vals_A,
     def compute_light_weights(pp):
         # Reshape the normalisation factors into the same shape as the ppxf weights
         # Un-normalise the weights so that they are in units of Msun/(erg/s/Å) 
-        # at the normalisation wavelength (by default 5000 Å)
+        # at the normalisation wavelength (by default 4020 Å)
         weights_light_weighted = pp.weights * norm
         weights_light_weighted = np.reshape(
             weights_light_weighted[~pp.gas_component], (N_metallicities, N_ages))
