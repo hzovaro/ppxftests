@@ -43,7 +43,7 @@ def get_wavelength_from_velocity(lambda_rest, v, units):
 def create_mock_spectrum(sfh_mass_weighted, isochrones, sigma_star_kms, z, SNR,
                          ngascomponents=0, sigma_gas_kms=[], v_gas_kms=[], 
                          eline_model=[], L_Ha_erg_s=[], 
-                         agn_continuum=False, alpha_nu=2.0, L_NT_erg_s=0,
+                         agn_continuum=False, alpha_nu=2.0, x_AGN=0, lambda_norm_A=4020,
                          metals_to_use=None, plotit=True):
     
     """
@@ -88,10 +88,9 @@ def create_mock_spectrum(sfh_mass_weighted, isochrones, sigma_star_kms, z, SNR,
                             The corresponding exponent in wavelength space is 
                             given by 
                                         alpha_lambda = 2 - alpha_nu
-    L_NT_erg_s                    Nonthermal continuum lumonsity between 3000 Å and
-                            9500 Å, used to derive the normalisation constant
-                            for the AGN continuum. In most AGN, 
-                                        L_NT_erg_s approx. 80 * L_Hbeta (Yee 1980)
+    x_AGN                   Fraction of continuum at lambda_norm_A from the 
+                            power-law AGN continuum
+    lambda_norm_A           Normalisation wavelength for the AGN continuum
     Returns:
     spec, spec_err          mock spectrum and corresponding 1-sigma errors, in
                             units of erg/s. 
@@ -343,7 +342,12 @@ def create_mock_spectrum(sfh_mass_weighted, isochrones, sigma_star_kms, z, SNR,
     if agn_continuum:
         # Compute the continuum normalisation
         alpha_lambda = 2 - alpha_nu
-        F_lambda_0 = L_NT_erg_s * (1 - alpha_lambda) / (9500**(1 - alpha_lambda) - 3000**(1 - alpha_lambda))
+
+        # Add an AGN continuum
+        lambda_norm_idx = np.nanargmin(np.abs(np.exp(lambda_vals_ssp_log) - lambda_norm_A))
+        F_star_0 = spec_log_conv[lambda_norm_idx]
+        F_agn_0 = x_AGN * F_star_0
+        F_lambda_0 = F_agn_0 / lambda_norm_A**(-alpha_lambda)
 
         # Compute the continuum
         spec_log_agn = F_lambda_0 * np.exp(lambda_vals_ssp_log)**(-alpha_lambda)
@@ -355,7 +359,7 @@ def create_mock_spectrum(sfh_mass_weighted, isochrones, sigma_star_kms, z, SNR,
         if plotit:
             fig, ax = plt.subplots(nrows=1, ncols=1, figsize=(fig_w, fig_h))
             ax.plot(np.exp(lambda_vals_ssp_log), spec_log_agn, color="purple", 
-                    label=r"AGN continuum ($\log_{10} L_{\rm NT} = %.2f, \alpha_\nu = %.2f$)" % (np.log10(L_NT_erg_s), alpha_nu))
+                    label=r"AGN continuum ($x_{\rm AGN} = %.2f, \, \alpha_\nu = %.2f$)" % (x_AGN, alpha_nu))
             ax.plot(np.exp(lambda_vals_ssp_log), spec_log_conv_prev, color="black", alpha=0.5, label="Without AGN continuum")
             ax.plot(np.exp(lambda_vals_ssp_log), spec_log_conv, color="black", label="With AGN continuum")
             ax.set_ylabel(f"$L$ (erg/s/$\AA$)")
