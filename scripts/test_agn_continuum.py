@@ -10,7 +10,7 @@ import pandas as pd
 from astropy.io import fits
 
 from ppxftests.run_ppxf import run_ppxf
-from ppxftests.ssputils import load_ssp_templates, get_bin_edges_and_widths
+from ppxftests.ssputils import load_ssp_templates
 from ppxftests.mockspec import create_mock_spectrum
 from ppxftests.sfhutils import load_sfh, compute_mw_age, compute_lw_age, compute_mass
 from ppxftests.sfhutils import compute_mean_age, compute_mean_mass, compute_mean_sfr, compute_mean_1D_sfh
@@ -24,7 +24,6 @@ plt.close("all")
 
 from IPython.core.debugger import Tracer
 
-fig_path = "/priv/meggs3/u5708159/ppxftests/figs/"
 data_path = "/priv/meggs3/u5708159/ppxftests/"
 
 ###############################################################################
@@ -36,38 +35,23 @@ z = 0.01
 
 # Get the age & metallicity dimensions
 _, _, metallicities, ages = load_ssp_templates(isochrones)
-N_ages = len(ages)
-N_metallicities = len(metallicities)
-bin_edges, bin_widths = get_bin_edges_and_widths(isochrones=isochrones)
 
 # ppxf settings
 niters = 100
 nthreads = 25
-
-# For analysis
-lambda_norm_A = 5000
-age_thresh_pairs = [
-    (ages[0], 1e7),
-    (ages[0], 1e8),
-    (ages[0], 1e9),
-    (1e9, ages[-1]),
-    (ages[0], ages[-1]),
-]
-
-age_thresh_vals = [None, 1e9, None]
+fit_agn_cont = True  # NOTE: run this TWICE - once with AGN cont. in the fit, once without.
 
 # Parameters
 # alpha_nu_vals = np.linspace(0.3, 2.1, 5)  # What is a typical value for low-z Seyfert galaxies?
-# log_L_NT_vals = np.linspace(42, 44, 5)
-alpha_nu_vals = [0.3, 2.0]
-log_L_NT_vals = [42, 43, 44]
+alpha_nu_vals = [np.nan, 0.3, 2.0]
+x_AGN_vals = [np.nan, 0.1, 0.5, 1.0] # NOTE: NaNs are included to create a "special case" where we run without the AGN continuum
 
 ###########################################################################
 # Helper function for running MC simulations
 ###########################################################################
 def ppxf_helper(args):
     # Unpack arguments
-    seed, spec, spec_err, lambda_vals_A = args
+    seed, spec, spec_err, lambda_vals_A, fit_agn_cont = args
     
     # Add "extra" noise to the spectrum
     rng = RandomState(seed)
@@ -81,30 +65,101 @@ def ppxf_helper(args):
     # Run ppxf
     pp = run_ppxf(spec=spec_noise, spec_err=spec_err, lambda_vals_A=lambda_vals_A,
                   z=z, ngascomponents=1,
+                  fit_agn_cont=fit_agn_cont,
                   regularisation_method="none", 
                   isochrones="Padova",
                   fit_gas=False, tie_balmer=True,
                   plotit=False, savefigs=False, interactive_mode=False)
     return pp
 
+
+###########################################################################
+# Function for 
+###########################################################################
+def add_stuff_to_df(pp_mc_list, pp_regul, ages, isochrones):
+    # STUFF TO STORE IN THE DATA FRAME
+    thisrow = {}  # Row to append to DataFrame
+
+    # Light-weighted SFH (1D)
+    thisrow["SFH LW 1D (MC mean)"] = np.nanmean(np.array([pp.sfh_lw_1D for pp in pp_mc_list]), axis=0)
+    thisrow["SFH LW 1D (MC error)"] = np.nanstd(np.array([pp.sfh_lw_1D for pp in pp_mc_list]), axis=0)
+    thisrow["SFH LW 1D (regularised)"] = pp_regul.sfh_lw_1D
+
+    # Mass-weighted SFH (1D)
+    thisrow["SFH MW 1D (MC mean)"] = np.nanmean(np.array([pp.sfh_mw_1D for pp in pp_mc_list]), axis=0)
+    thisrow["SFH MW 1D (MC error)"] = np.nanstd(np.array([pp.sfh_mw_1D for pp in pp_mc_list]), axis=0)
+    thisrow["SFH MW 1D (regularised)"] = pp_regul.sfh_mw_1D
+
+    # Cumulative mass 
+    thisrow["Cumulative mass vs. age cutoff (MC mean)"] = np.nanmean(np.array([[compute_mass(pp.sfh_mw_1D, isochrones=isochrones, age_thresh_upper=a) for a in ages[1:]] for pp in pp_mc_list]), axis=0)
+    thisrow["Cumulative mass vs. age cutoff (MC error)"] = np.nanstd(np.array([[compute_mass(pp.sfh_mw_1D, isochrones=isochrones, age_thresh_upper=a) for a in ages[1:]] for pp in pp_mc_list]), axis=0)
+    thisrow["Cumulative mass vs. age cutoff (regularised)"] = np.array([compute_mass(pp_regul.sfh_mw_1D, isochrones=isochrones, age_thresh_upper=a) for a in ages[1:]])
+
+    # Mass-weighted age as a function of time
+    thisrow["Mass-weighted age vs. age cutoff (MC mean)"] = np.nanmean(np.array([[compute_mw_age(pp.sfh_mw_1D, isochrones=isochrones, age_thresh_upper=a) for a in ages[1:]] for pp in pp_mc_list]), axis=0)
+    thisrow["Mass-weighted age vs. age cutoff (MC error)"] = np.nanstd(np.array([[compute_mw_age(pp.sfh_mw_1D, isochrones=isochrones, age_thresh_upper=a) for a in ages[1:]] for pp in pp_mc_list]), axis=0)
+    thisrow["Mass-weighted age vs. age cutoff (regularised)"] = np.array([compute_mw_age(pp_regul.sfh_mw_1D, isochrones=isochrones, age_thresh_upper=a) for a in ages[1:]]) 
+
+    # Light-weighted age as a function of time
+    thisrow["Light-weighted age vs. age cutoff (MC mean)"] = np.nanmean(np.array([[compute_lw_age(pp.sfh_lw_1D, isochrones=isochrones, age_thresh_upper=a) for a in ages[1:]] for pp in pp_mc_list]), axis=0)
+    thisrow["Light-weighted age vs. age cutoff (MC error)"] = np.nanstd(np.array([[compute_lw_age(pp.sfh_lw_1D, isochrones=isochrones, age_thresh_upper=a) for a in ages[1:]] for pp in pp_mc_list]), axis=0)
+    thisrow["Light-weighted age vs. age cutoff (regularised)"] = np.array([compute_lw_age(pp_regul.sfh_lw_1D, isochrones=isochrones, age_thresh_upper=a) for a in ages[1:]]) 
+
+    # "Sky" template weights 
+    thisrow["ppxf alpha_nu_vals"] = pp_regul.alpha_nu_vals
+    thisrow["AGN template weights (MC mean)"] = np.nanmean([pp.weights_agn for pp in pp_mc_list], axis=0)
+    thisrow["AGN template weights (MC error)"] = np.nanstd([pp.weights_agn for pp in pp_mc_list], axis=0)
+    thisrow["AGN template weights (regularised)"] = pp_regul.weights_agn
+
+    return thisrow
+
 ###############################################################################
 # Load a realistic SFH
 ###############################################################################
-gals = [int(g) for g in sys.argv[1:]]
-for gal in gals:
-    try:
-        sfh_mw_input, sfh_lw_input, sfr_avg_input, sigma_star_kms = load_sfh(gal, plotit=True)
-    except:
-        print(f"ERROR: unable to load galaxy {gal}. Skipping...")
-        continue
+# gals = [int(g) for g in sys.argv[1:]]
+# for gal in gals:
+gal = int(sys.argv[1])
+try:
+    sfh_mw_input, sfh_lw_input, sfr_avg_input, sigma_star_kms = load_sfh(gal, plotit=True)
+except:
+    print(f"ERROR: unable to load galaxy {gal}. Skipping...")
+    sys.exit()
 
-    ###############################################################################
-    # Run ppxf without an AGN continuum added as a "control"
-    ###############################################################################
+###############################################################################
+#//////////////////////////////////////////////////////////////////////////////
+# DEFINE THE INPUT SFH
+# COMPUTE THE TRUTH VALUES 
+# STORE THESE SOMEWHERE SO THEY CAN LATER BE ADDED TO THE DATAFRAME
+#//////////////////////////////////////////////////////////////////////////////
+###############################################################################
+truth_dict = {}
+truth_dict["SFH LW 1D (input)"] = np.nansum(sfh_lw_input, axis=0)
+truth_dict["SFH MW 1D (input)"] = np.nansum(sfh_mw_input, axis=0)
+truth_dict["Cumulative mass vs. age cutoff (input)"] = np.array([compute_mass(np.nansum(sfh_mw_input, axis=0), isochrones=isochrones, age_thresh_upper=a) for a in ages[1:]])
+truth_dict["Mass-weighted age vs. age cutoff (input)"] = np.array([compute_mw_age(np.nansum(sfh_mw_input, axis=0), isochrones=isochrones, age_thresh_upper=a) for a in ages[1:]]) 
+truth_dict["Light-weighted age vs. age cutoff (input)"] = np.array([compute_lw_age(np.nansum(sfh_lw_input, axis=0), isochrones=isochrones, age_thresh_upper=a) for a in ages[1:]]) 
+
+###############################################################################
+#//////////////////////////////////////////////////////////////////////////////
+# RUN PPXF ON SPECTRA W/ EACH COMBINATION OF ALPHA_NU AND X_AGN
+# ONE ROW FOR EACH COMBINATION
+# APPEND TO DATA FRAME
+#//////////////////////////////////////////////////////////////////////////////
+###############################################################################
+df = pd.DataFrame()
+for alpha_nu, x_AGN in tqdm(product(alpha_nu_vals, x_AGN_vals), total=len(alpha_nu_vals) * len(x_AGN_vals)):
+    # IF both are NaN, then do NOT add an AGN continuum
+    if np.isnan(x_AGN) and np.isnan(alpha_nu):
+        add_agn_continuum = False 
+    elif np.isnan(x_AGN) or np.isnan(alpha_nu):
+        continue
+    print(f"{x_AGN}, {alpha_nu}")
+
+    """
     # Create spectrum
     spec, spec_err, lambda_vals_A = create_mock_spectrum(
         sfh_mass_weighted=sfh_mw_input,
-        agn_continuum=False,
+        agn_continuum=add_agn_continuum, x_AGN=x_AGN, alpha_nu=alpha_nu,
         isochrones=isochrones, z=z, SNR=SNR, sigma_star_kms=sigma_star_kms,
         plotit=False)
 
@@ -132,171 +187,39 @@ for gal in gals:
                   regularisation_method="auto",
                   isochrones=isochrones,
                   fit_gas=False, tie_balmer=True,
+                  fit_agn_cont=True,
                   delta_regul_min=1, regul_max=5e4, delta_delta_chi2_min=1,
                   regul_nthreads=nthreads,
                   plotit=False, savefigs=False, interactive_mode=False)
     print(f"Gal {gal:004}: Regularisation: total time in run_ppxf: {time() - t:.2f} seconds")
 
     ###########################################################################
-    # Create an empty DataFrame for storing results in
-    ###########################################################################
-    df = pd.DataFrame()
-
-    ###########################################################################
     # Compute mean quantities from the ppxf runs
     ###########################################################################
-    thisrow = {}  # Row to append to DataFrame
-    thisrow["AGN continuum"] = False
-    thisrow["alpha_nu"] = np.nan
-    thisrow["log L_NT"] = np.nan
-
-    # Compute the mean SFH and SFR from the lists of MC runs
-    sfh_MC_lw_1D_mean = compute_mean_1D_sfh(pp_mc_list, isochrones, "lw")
-    sfh_MC_mw_1D_mean = compute_mean_1D_sfh(pp_mc_list, isochrones, "mw")
-    sfr_avg_MC = compute_mean_sfr(pp_mc_list, isochrones)
-    sfh_regul_mw_1D = pp_regul.sfh_mw_1D
-    sfh_regul_lw_1D = pp_regul.sfh_lw_1D
-    sfr_avg_regul = pp_regul.sfr_mean
-
-    # Compute the mean mass- and light-weighted ages plus the total mass in a series of age ranges
-    for age_thresh_pair in age_thresh_pairs:
-        age_thresh_lower, age_thresh_upper = age_thresh_pair
-        age_str = f"{np.log10(age_thresh_lower):.2f} < log t < {np.log10(age_thresh_upper):.2f}"
-            
-        # MC runs: compute the mean mass- and light-weighted ages plus the total mass in this age range
-        age_lw_mean, age_lw_std = compute_mean_age(pp_mc_list, isochrones, "lw", age_thresh_lower, age_thresh_upper)
-        age_mw_mean, age_mw_std = compute_mean_age(pp_mc_list, isochrones, "mw", age_thresh_lower, age_thresh_upper)
-        mass_mean, mass_std = compute_mean_mass(pp_mc_list, isochrones, age_thresh_lower=age_thresh_lower, age_thresh_upper=age_thresh_upper)
-        
-        # Regul run: compute the mean mass- and light-weighted ages plus the total mass in this age range
-        age_mw_regul = 10**compute_mw_age(sfh_regul_mw_1D, isochrones=isochrones, age_thresh_lower=age_thresh_lower, age_thresh_upper=age_thresh_upper)[0]
-        age_lw_regul = 10**compute_lw_age(sfh_regul_lw_1D, isochrones=isochrones, age_thresh_lower=age_thresh_lower, age_thresh_upper=age_thresh_upper)[0]
-        mass_regul = compute_mass(sfh_regul_mw_1D, isochrones=isochrones, age_thresh_lower=age_thresh_lower, age_thresh_upper=age_thresh_upper)
-
-        # Input: compute the mean mass- and light-weighted ages plus the total mass in this age range
-        age_mw_input = 10**compute_mw_age(sfh_mw_input, isochrones=isochrones, age_thresh_lower=age_thresh_lower, age_thresh_upper=age_thresh_upper)[0]
-        age_lw_input = 10**compute_lw_age(sfh_lw_input, isochrones=isochrones, age_thresh_lower=age_thresh_lower, age_thresh_upper=age_thresh_upper)[0]
-        mass_input = compute_mass(sfh_mw_input, isochrones=isochrones, age_thresh_lower=age_thresh_lower, age_thresh_upper=age_thresh_upper)
-
-        # Put in DataFrame
-        thisrow[f"MW age {age_str} (input)"] = age_mw_input
-        thisrow[f"LW age {age_str} (input)"] = age_lw_input
-        thisrow[f"Mass {age_str} (input)"] = mass_input
-        thisrow[f"MW age {age_str} (MC) mean"] = age_mw_mean
-        thisrow[f"LW age {age_str} (MC) mean"] = age_lw_mean
-        thisrow[f"Mass {age_str} (MC) mean"] = mass_mean
-        thisrow[f"MW age {age_str} (MC) std. dev."] = age_mw_std
-        thisrow[f"LW age {age_str} (MC) std. dev."] = age_lw_std
-        thisrow[f"Mass {age_str} (MC) std. dev."] = mass_std
-        thisrow[f"MW age {age_str} (regularised)"] = age_mw_regul
-        thisrow[f"LW age {age_str} (regularised)"] = age_lw_regul
-        thisrow[f"Mass {age_str} (regularised)"] = mass_regul
+    thisrow = add_stuff_to_df(pp_mc_list, pp_regul)
+    thisrow["AGN continuum in input?"] = add_agn_continuum
+    thisrow["alpha_nu"] = alpha_nu
+    thisrow["x_AGN"] = x_AGN
 
     df = df.append(thisrow, ignore_index=True)
+    """
 
-    ###############################################################################
-    # The effect of the strength and exponent of the AGN continuum on the recovered SFH
-    ###############################################################################
-    for alpha_nu, log_L_NT in tqdm(product(alpha_nu_vals, log_L_NT_vals), total=len(alpha_nu_vals) * len(log_L_NT_vals)):
-        # Create spectrum
-        spec, spec_err, lambda_vals_A = create_mock_spectrum(
-            sfh_mass_weighted=sfh_mw_input,
-            agn_continuum=True, L_NT_erg_s=10**log_L_NT, alpha_nu=alpha_nu,
-            isochrones=isochrones, z=z, SNR=SNR, sigma_star_kms=sigma_star_kms,
-            plotit=False)
+###############################################################################
+# Save DataFrame to file 
+###############################################################################
+# Add information about the input
+for key in truth_dict:
+    df.loc[:, key] = [truth_dict[key]]
 
-        ###########################################################################
-        # Run ppxf WITHOUT regularisation, using a MC approach
-        ###########################################################################
-        # Input arguments
-        seeds = list(np.random.randint(low=0, high=100 * niters, size=niters))
-        args_list = [[s, spec, spec_err, lambda_vals_A] for s in seeds]
+# Add metadata 
+df["SNR"] = SNR
+df["niters"] = niters
+df["nthreads"] = nthreads
+df["z"] = z
+df["Emission lines?"] = False
+df["AGN continuum included in fit?"] = fit_agn_cont
+df["isochrones"] = isochrones
+df["sigma_star_kms"] = sigma_star_kms
 
-        # Run in parallel
-        print(f"Gal {gal:004}: MC simulations: running ppxf on {nthreads} threads...")
-        t = time()
-        with multiprocessing.Pool(nthreads) as pool:
-            pp_mc_list = list(tqdm(pool.imap(ppxf_helper, args_list), total=niters))
-        print(f"Gal {gal:004}: MC simulations: total time in ppxf: {time() - t:.2f} s")
-
-        ###########################################################################
-        # Run ppxf with regularisation
-        ###########################################################################
-        t = time()
-        print(f"Gal {gal:004}: Regularisation: running ppxf on {nthreads} threads...")
-        pp_regul = run_ppxf(spec=spec, spec_err=spec_err, lambda_vals_A=lambda_vals_A,
-                      z=z, ngascomponents=1,
-                      regularisation_method="auto",
-                      isochrones=isochrones,
-                      fit_gas=False, tie_balmer=True,
-                      delta_regul_min=1, regul_max=5e4, delta_delta_chi2_min=1,
-                      regul_nthreads=nthreads,
-                      plotit=False, savefigs=False, interactive_mode=False)
-        print(f"Gal {gal:004}: Regularisation: total time in run_ppxf: {time() - t:.2f} seconds")
-
-        ###########################################################################
-        # Compute mean quantities from the ppxf runs
-        ###########################################################################
-        thisrow = {}  # Row to append to DataFrame
-        thisrow["AGN continuum"] = True
-        thisrow["alpha_nu"] = alpha_nu
-        thisrow["log L_NT"] = log_L_NT
-
-        # Compute the mean SFH and SFR from the lists of MC runs
-        sfh_MC_lw_1D_mean = compute_mean_1D_sfh(pp_mc_list, isochrones, "lw")
-        sfh_MC_mw_1D_mean = compute_mean_1D_sfh(pp_mc_list, isochrones, "mw")
-        sfr_avg_MC = compute_mean_sfr(pp_mc_list, isochrones)
-        sfh_regul_mw_1D = pp_regul.sfh_mw_1D
-        sfh_regul_lw_1D = pp_regul.sfh_lw_1D
-        sfr_avg_regul = pp_regul.sfr_mean
-
-        # Compute the mean mass- and light-weighted ages plus the total mass in a series of age ranges
-        for age_thresh_pair in age_thresh_pairs:
-            age_thresh_lower, age_thresh_upper = age_thresh_pair
-            age_str = f"{np.log10(age_thresh_lower):.2f} < log t < {np.log10(age_thresh_upper):.2f}"
-
-            # MC runs: compute the mean mass- and light-weighted ages plus the total mass in this age range
-            age_lw_mean, age_lw_std = compute_mean_age(pp_mc_list, isochrones, "lw", age_thresh_lower, age_thresh_upper)
-            age_mw_mean, age_mw_std = compute_mean_age(pp_mc_list, isochrones, "mw", age_thresh_lower, age_thresh_upper)
-            mass_mean, mass_std = compute_mean_mass(pp_mc_list, isochrones, age_thresh_lower=age_thresh_lower, age_thresh_upper=age_thresh_upper)
-
-            # Regul run: compute the mean mass- and light-weighted ages plus the total mass in this age range
-            age_mw_regul = 10**compute_mw_age(sfh_regul_mw_1D, isochrones=isochrones, age_thresh_lower=age_thresh_lower, age_thresh_upper=age_thresh_upper)[0]
-            age_lw_regul = 10**compute_lw_age(sfh_regul_lw_1D, isochrones=isochrones, age_thresh_lower=age_thresh_lower, age_thresh_upper=age_thresh_upper)[0]
-            mass_regul = compute_mass(sfh_regul_mw_1D, isochrones=isochrones, age_thresh_lower=age_thresh_lower, age_thresh_upper=age_thresh_upper)
-
-            # Input: compute the mean mass- and light-weighted ages plus the total mass in this age range
-            age_mw_input = 10**compute_mw_age(sfh_mw_input, isochrones=isochrones, age_thresh_lower=age_thresh_lower, age_thresh_upper=age_thresh_upper)[0]
-            age_lw_input = 10**compute_lw_age(sfh_lw_input, isochrones=isochrones, age_thresh_lower=age_thresh_lower, age_thresh_upper=age_thresh_upper)[0]
-            mass_input = compute_mass(sfh_mw_input, isochrones=isochrones, age_thresh_lower=age_thresh_lower, age_thresh_upper=age_thresh_upper)
-
-            # Put in DataFrame
-            thisrow[f"MW age {age_str} (input)"] = age_mw_input
-            thisrow[f"LW age {age_str} (input)"] = age_lw_input
-            thisrow[f"Mass {age_str} (input)"] = mass_input
-            thisrow[f"MW age {age_str} (MC) mean"] = age_mw_mean
-            thisrow[f"LW age {age_str} (MC) mean"] = age_lw_mean
-            thisrow[f"Mass {age_str} (MC) mean"] = mass_mean
-            thisrow[f"MW age {age_str} (MC) std. dev."] = age_mw_std
-            thisrow[f"LW age {age_str} (MC) std. dev."] = age_lw_std
-            thisrow[f"Mass {age_str} (MC) std. dev."] = mass_std
-            thisrow[f"MW age {age_str} (regularised)"] = age_mw_regul
-            thisrow[f"LW age {age_str} (regularised)"] = age_lw_regul
-            thisrow[f"Mass {age_str} (regularised)"] = mass_regul
-
-        df = df.append(thisrow, ignore_index=True)
-
-    ###############################################################################
-    # Save DataFrame to file 
-    ###############################################################################
-    # Add metadata 
-    df["SNR"] = SNR
-    df["niters"] = niters
-    df["nthreads"] = nthreads
-    df["z"] = z
-    df["Emission lines"] = False
-    df["isochrones"] = isochrones
-    df["sigma_star_kms"] = sigma_star_kms
-
-    # Save
-    df.to_hdf(os.path.join(data_path, f"ga{gal}_agncont.hd5"), key="agn")
+# Save
+# df.to_hdf(os.path.join(data_path, f"ga{gal}_agncont_agncontfit={'true' if fit_agn_cont else 'false'}.hd5"), key="agn")
