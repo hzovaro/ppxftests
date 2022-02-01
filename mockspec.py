@@ -128,9 +128,6 @@ def create_mock_spectrum(sfh_mass_weighted, isochrones, sigma_star_kms, z, SNR,
         assert np.all([m in ["HII", "AGN", "BLR"] for m in eline_model]),\
             "entries in eline_model must be either 'HII', 'AGN' or 'BLR'!"
 
-    if agn_continuum:
-        assert alpha_nu != 1.0, "alpha_nu must not be 1.0!"
-
     ###########################################################################
     # WIFES Instrument properties
     ###########################################################################
