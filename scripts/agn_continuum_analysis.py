@@ -87,7 +87,7 @@ for alpha_nu, x_AGN in product(alpha_nu_vals, x_AGN_vals):
         # Decorations
         ax.set_yscale("log")
         ax.set_xscale("log")
-        ax.legend(loc="auto", fontsize="x-small")
+        ax.legend(loc="best", fontsize="x-small")
         ax.grid()
         ax.set_ylabel(f"{weighttype} fraction")
         ax.set_xlabel("Age (yr)")
@@ -101,18 +101,19 @@ for alpha_nu, x_AGN in product(alpha_nu_vals, x_AGN_vals):
     # Plot the mean mass- and light-weighted age vs. age threshold
     # expressed as an ERROR
     #//////////////////////////////////////////////////////////////////////////////
-    fig, axs = plt.subplots(nrows=2, ncols=4, figsize=(18, 10))
+    fig, axs = plt.subplots(nrows=2, ncols=4, figsize=(20, 8))
     fig.subplots_adjust(left=0.025, right=1 - 0.025, top=1 - 0.05, bottom=0.025)
     fig.suptitle(title_str)
 
     colour_lists = [
-        ("red", "maroon", "orange"),
+        ("red", "maroon", "pink"),
         ("green", "darkgreen", "lightgreen"),
-        ("blue", "indigo", "cornflowerblue")
+        ("blue", "indigo", "cornflowerblue"),
+        ("gold", "brown", "orange")
     ]
 
     # PLOT: 
-    for cc, weighttype in enumerate(["Mass-weighted age", "Light-weighted age", "Cumulative mass"]):
+    for cc, weighttype in enumerate(["Mass-weighted age", "Light-weighted age", "Cumulative mass", "Cumulative light"]):
         colname = f"{weighttype} vs. age cutoff"
         colour_input, colour_regul, colour_mc = colour_lists[cc]
 
@@ -126,7 +127,7 @@ for alpha_nu, x_AGN in product(alpha_nu_vals, x_AGN_vals):
         axs[0][cc].fill_between(x=ages[1:], y1=y_meas - y_err, y2=y_meas + y_err, step="mid", alpha=0.2, color=colour_mc)
 
         # Decorations  
-        axs[0][cc].axvspan(ages[1], ages[np.argwhere(~np.isnan(df.loc[cond, f"{colname} (input)"].values.item()))[0][0]], color="grey", alpha=0.2)  
+        axs[0][cc].axvspan(ages[1], ages[np.argwhere(np.isfinite(df.loc[cond, f"{colname} (input)"].values.item()))[0][0]], color="grey", alpha=0.2)  
         axs[0][cc].set_xscale("log")
         axs[0][cc].legend(loc="best", fontsize="x-small")
         axs[0][cc].set_xlabel("Age threshold (yr)")
@@ -144,11 +145,11 @@ for alpha_nu, x_AGN in product(alpha_nu_vals, x_AGN_vals):
         log_dy = log_y_meas - log_y_input
         log_dy_lower = log_y_meas - log_y_err - log_y_input
         log_dy_upper = log_y_meas + log_y_err - log_y_input
-        axs[1][cc].step(x=ages[1:], y=log_dy, where="mid", color=colour_mc, label=f"{colname} (MC)")
+        axs[1][cc].step(x=ages[1:], y=log_dy, where="mid", color=colour_mc, label=f"{weighttype} (MC)")
         axs[1][cc].fill_between(x=ages[1:], y1=log_dy_lower, y2=log_dy_upper, step="mid", alpha=0.2, color=colour_mc)
         
         # Decorations
-        axs[1][cc].axvspan(ages[1], ages[np.argwhere(~np.isnan(log_y_input))[0][0]], color="grey", alpha=0.2)
+        axs[1][cc].axvspan(ages[1], ages[np.argwhere(np.isfinite(log_y_input))[0][0]], color="grey", alpha=0.2)
         axs[1][cc].axhline(0, color="k")   
         axs[1][cc].set_xscale("log")
         axs[1][cc].legend(loc="best", fontsize="x-small")
@@ -157,141 +158,6 @@ for alpha_nu, x_AGN in product(alpha_nu_vals, x_AGN_vals):
         axs[1][cc].set_xlim([ages[0], ages[-1]])
         axs[1][cc].grid()
         axs[1][cc].autoscale(axis="x", tight=True, enable=True)
-
-    # {weighttype}-weighted
-    # Plot the measured values - the input values
-    axs[0][0].step(x=ages[1:], y=df.loc[cond, "Light-weighted age vs. age cutoff (regularised)"].values.item()[0] - df.loc[cond, "Light-weighted age vs. age cutoff (input)"].values.item(), label=f"light-weighted age (regularised)", where="mid", color="maroon")
-    # MC - need to treat errorbars separately
-    log_y_meas = df.loc[cond, "Light-weighted age vs. age cutoff (MC mean)"].values.item()[0]
-    log_y_input = df.loc[cond, "Light-weighted age vs. age cutoff (input)"].values.item()
-    log_y_err = df.loc[cond, "Light-weighted age vs. age cutoff (MC error)"].values.item()[0]
-    axs[0][0].step(x=ages[1:], y=log_y_meas - log_y_input, where="mid", color="orange", label=f"Measured light-weighted age (MC)")
-    axs[0][0].fill_between(x=ages[1:], y1=log_y_meas - log_y_err - log_y_input, y2=log_y_meas + log_y_err - log_y_input, step="mid", alpha=0.2, color="orange")
-    # Decorations
-    axs[0][0].axvspan(ages[1], ages[np.argwhere(~np.isnan(log_y_input))[0][0]], color="grey", alpha=0.2)
-    axs[0][0].axhline(0, color="k")   
-    axs[0][0].set_xscale("log")
-    axs[0][0].legend(loc="auto", fontsize="x-small")
-    axs[0][0].set_xlabel("Age threshold (yr)")
-    axs[0][0].set_ylabel(r"$\Delta$ light-weighted mean age error (log yr)")
-    axs[0][0].set_xlim([ages[0], ages[-1]])
-    axs[0][0].grid()
-    axs[0][0].autoscale(axis="x", tight=True, enable=True)
-
-    # Mass-weighted
-    # Plot the measured values - the input values
-    axs[0][1].step(x=ages[1:], y=df.loc[cond, "Mass-weighted age vs. age cutoff (regularised)"].values.item()[0] - df.loc[cond, "Mass-weighted age vs. age cutoff (input)"].values.item(), label=f"Measured mass-weighted age (regularised)", where="mid", color="darkgreen")
-    # MC - need to treat errorbars separately
-    log_y_meas = df.loc[cond, "Mass-weighted age vs. age cutoff (MC mean)"].values.item()[0]
-    log_y_input = df.loc[cond, "Mass-weighted age vs. age cutoff (input)"].values.item()
-    log_y_err = df.loc[cond, "Mass-weighted age vs. age cutoff (MC error)"].values.item()[0]
-    axs[0][1].step(x=ages[1:], y=log_y_meas - log_y_input, where="mid", color="lightgreen", label=f"Measured mass-weighted age (MC)")
-    axs[0][1].fill_between(x=ages[1:], y1=log_y_meas - log_y_err - log_y_input, y2=log_y_meas + log_y_err - log_y_input, step="mid", alpha=0.2, color="lightgreen")
-    # Decorations
-    axs[0][1].axvspan(ages[1], ages[np.argwhere(~np.isnan(log_y_input))[0][0]], color="grey", alpha=0.2)
-    axs[0][1].axhline(0, color="k")   
-    axs[0][1].set_xscale("log")
-    axs[0][1].legend(loc="auto", fontsize="x-small")
-    axs[0][1].set_xlabel("Age threshold (yr)")
-    axs[0][1].set_ylabel(r"$\Delta$ mass-weighted mean age (log yr)")
-    axs[0][1].set_xlim([ages[0], ages[-1]])
-    axs[0][1].grid()
-    axs[0][1].autoscale(axis="x", tight=True, enable=True)
-
-    #//////////////////////////////////////////////////////////////////////////////
-    # Also plot cumulative mass expressed as a % so we can see what the threshold is at this S/N 
-    #//////////////////////////////////////////////////////////////////////////////
-    # Plot the measured values - the input values
-    axs[0][2].step(x=ages[1:], y=(np.log10(df.loc[cond, "Cumulative mass vs. age cutoff (regularised)"].values.item()[0]) - np.log10(df.loc[cond, "Cumulative mass vs. age cutoff (input)"].values.item())), label=f"Cumulative mass (regularised)", where="mid", color="indigo")
-    # MC - need to treat errorbars separately
-    y_meas = df.loc[cond, "Cumulative mass vs. age cutoff (MC mean)"].values.item()[0]
-    y_input = df.loc[cond, "Cumulative mass vs. age cutoff (input)"].values.item()
-    y_err = df.loc[cond, "Cumulative mass vs. age cutoff (MC error)"].values.item()[0]
-    log_dy = np.log10(y_meas) - np.log10(y_input)
-    log_dy_upper = np.log10((y_meas + y_err)) - np.log10(y_input)
-    log_dy_lower = np.log10((y_meas - y_err)) - np.log10(y_input)
-    axs[0][2].step(x=ages[1:], y=log_dy, where="mid", color="cornflowerblue", label=f"Cumulative mass (MC)")
-    axs[0][2].fill_between(x=ages[1:], y1=log_dy_lower, y2=log_dy_upper, step="mid", alpha=0.2, color="cornflowerblue")
-
-    # Decorations
-    axs[0][2].axvspan(ages[1], ages[np.argwhere(y_input > 0)[0][0]], color="grey", alpha=0.2)
-    axs[0][2].axhline(0, color="k")   
-    axs[0][2].axhline(1e-4, color="k", ls="--", linewidth=1)
-    axs[0][2].set_xscale("log")
-    axs[0][2].legend(loc="auto", fontsize="x-small")
-    axs[0][2].set_xlabel("Age (yr)")
-    axs[0][2].set_ylabel(r"$\Delta$ cumulative mass (log yr)")
-    axs[0][2].set_xlim([ages[1], ages[-1]])
-    axs[0][2].grid()
-    axs[0][2].autoscale(axis="x", tight=True, enable=True)
-
-    #//////////////////////////////////////////////////////////////////////////////
-    # Plot the mean mass- and light-weighted age vs. age threshold
-    #//////////////////////////////////////////////////////////////////////////////
-    # Plot the "true" values
-    axs[1][0].step(x=ages[1:], y=df.loc[cond, "Light-weighted age vs. age cutoff (input)"].values.item(), label=f"Light-weighted age", where="mid", linewidth=2.5, color="red")
-
-    # Plot the values measured from the ppxf runs
-    axs[1][0].step(x=ages[1:], y=df.loc[cond, "Light-weighted age vs. age cutoff (regularised)"].values.item()[0], label=f"Measured light-weighted age (regularised)", where="mid", color="maroon")
-    # MC - need to treat errorbars separately
-    log_y_meas = df.loc[cond, "Light-weighted age vs. age cutoff (MC mean)"].values.item()[0]
-    log_y_err = df.loc[cond, "Light-weighted age vs. age cutoff (MC error)"].values.item()[0]
-    axs[1][0].step(x=ages[1:], y=log_y_meas, where="mid", color="orange", label=f"Measured light-weighted age (MC)")
-    axs[1][0].fill_between(x=ages[1:], y1=log_y_meas - log_y_err, y2=log_y_meas + log_y_err, step="mid", alpha=0.2, color="orange")
-
-    # Decorations  
-    axs[1][0].axvspan(ages[1], ages[np.argwhere(~np.isnan(df.loc[cond, "Light-weighted age vs. age cutoff (input)"].values.item()))[0][0]], color="grey", alpha=0.2)  
-    axs[1][0].set_xscale("log")
-    axs[1][0].legend(loc="auto", fontsize="x-small")
-    axs[1][0].set_xlabel("Age threshold (yr)")
-    axs[1][0].set_ylabel("Weighted mean age (log yr)")
-    axs[1][0].set_xlim([ages[0], ages[-1]])
-    axs[1][0].grid()
-
-    # Plot the "true" values
-    axs[1][1].step(x=ages[1:], y=df.loc[cond, "Mass-weighted age vs. age cutoff (input)"].values.item(), label=f"Mass-weighted age", where="mid", linewidth=2.5, color="green")
-
-    # Plot the values measured from the ppxf runs
-    axs[1][1].step(x=ages[1:], y=df.loc[cond, "Mass-weighted age vs. age cutoff (regularised)"].values.item()[0], label=f"Measured mass-weighted age (regularised)", where="mid", color="darkgreen")
-    # MC - need to treat errorbars separately
-    log_y_meas = df.loc[cond, "Mass-weighted age vs. age cutoff (MC mean)"].values.item()[0]
-    log_y_err = df.loc[cond, "Mass-weighted age vs. age cutoff (MC error)"].values.item()[0]
-    axs[1][1].step(x=ages[1:], y=log_y_meas, where="mid", color="lightgreen", label=f"Measured mass-weighted age (MC)")
-    axs[1][1].fill_between(x=ages[1:], y1=log_y_meas - log_y_err, y2=log_y_meas + log_y_err, step="mid", alpha=0.2, color="lightgreen")
-
-    # Decorations  
-    axs[1][1].axvspan(ages[1], ages[np.argwhere(~np.isnan(df.loc[cond, "Mass-weighted age vs. age cutoff (input)"].values.item()))[0][0]], color="grey", alpha=0.2)  
-    axs[1][1].set_xscale("log")
-    axs[1][1].legend(loc="auto", fontsize="x-small")
-    axs[1][1].set_xlabel("Age threshold (yr)")
-    axs[1][1].set_ylabel("Weighted mean age (log yr)")
-    axs[1][1].set_xlim([ages[0], ages[-1]])
-    axs[1][1].grid()
-
-    #//////////////////////////////////////////////////////////////////////////////
-    # Also plot cumulative mass expressed as a % so we can see what the threshold is at this S/N 
-    #//////////////////////////////////////////////////////////////////////////////
-    # Plot the "true" values
-    axs[1][2].step(x=ages[1:], y=df.loc[cond, "Cumulative mass vs. age cutoff (input)"].values.item() / M_tot, label=f"Cumulative mass", where="mid", linewidth=2.5, color="blue")
-
-    # Plot 
-    axs[1][2].step(x=ages[1:], y=df.loc[cond, "Cumulative mass vs. age cutoff (regularised)"].values.item()[0] / M_tot, label=f"Cumulative mass (regularised)", where="mid", color="indigo")
-    # MC - need to treat errorbars separately
-    log_y_meas = df.loc[cond, "Cumulative mass vs. age cutoff (MC mean)"].values.item()[0] / M_tot
-    log_y_err = df.loc[cond, "Cumulative mass vs. age cutoff (MC error)"].values.item()[0] / M_tot
-    axs[1][2].step(x=ages[1:], y=log_y_meas, where="mid", color="cornflowerblue", label=f"Cumulative mass (MC)")
-    axs[1][2].fill_between(x=ages[1:], y1=log_y_meas - log_y_err, y2=log_y_meas + log_y_err, step="mid", alpha=0.2, color="cornflowerblue")
-
-    # Decorations    
-    axs[1][2].axvspan(ages[1], ages[np.argwhere(df.loc[cond, "Cumulative mass vs. age cutoff (input)"].values.item() > 0)[0][0]], color="grey", alpha=0.2)  
-    axs[1][2].axhline(1e-4, color="k", ls="--", linewidth=1)
-    axs[1][2].set_xscale("log")
-    axs[1][2].set_yscale("log")
-    axs[1][2].legend(loc="auto", fontsize="x-small")
-    axs[1][2].set_xlabel("Age (yr)")
-    axs[1][2].set_ylabel("Cumulative mass fraction")
-    axs[1][2].set_xlim([ages[0], ages[-1]])
-    axs[1][2].grid()
 
     #//////////////////////////////////////////////////////////////////////////////
     # AGN template weights 
