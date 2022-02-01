@@ -180,7 +180,7 @@ def convert_mass_weights_to_light_weights(sfh_mw, isochrones,
     return sfh_lw
  
 ###########################################################################
-def compute_mass(sfh_mw, isochrones,
+def compute_cumulative_mass(sfh_mw, isochrones,
                  age_thresh_lower=None,
                  age_thresh_upper=None):
     """
@@ -199,9 +199,33 @@ def compute_mass(sfh_mw, isochrones,
     age_thresh_lower_idx = np.nanargmin(np.abs(ages - age_thresh_lower))
     age_thresh_upper_idx = np.nanargmin(np.abs(ages - age_thresh_upper))
 
-    M = np.nansum(sfh_mw_1D[age_thresh_lower_idx:age_thresh_upper_idx])
+    logM = np.log10(np.nansum(sfh_mw_1D[age_thresh_lower_idx:age_thresh_upper_idx]))
 
-    return M
+    return logM
+
+###########################################################################
+def compute_cumulative_light(sfh_lw, isochrones,
+                 age_thresh_lower=None,
+                 age_thresh_upper=None):
+    """
+    Given a SFH, compute the total light in a specified age range.
+    """
+    # Sum the SFH over the metallicity dimension to get the 1D SFH
+    sfh_lw_1D = np.nansum(sfh_lw, axis=0) if sfh_lw.ndim > 1 else sfh_lw
+
+    ages = ages_padova if isochrones == "Padova" else ages_geneva
+    if age_thresh_lower is None:
+        age_thresh_lower = ages[0]
+    if age_thresh_upper is None: 
+        age_thresh_upper = ages[-1]
+
+    # Find the index of the threshold age in the template age array
+    age_thresh_lower_idx = np.nanargmin(np.abs(ages - age_thresh_lower))
+    age_thresh_upper_idx = np.nanargmin(np.abs(ages - age_thresh_upper))
+
+    logL = np.log10(np.nansum(sfh_lw_1D[age_thresh_lower_idx:age_thresh_upper_idx]))
+
+    return logL
 
 ###########################################################################
 def compute_mw_age(sfh_mw, isochrones,
