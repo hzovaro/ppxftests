@@ -177,24 +177,25 @@ def ppxf_mc(spec, spec_err, lambda_vals_A,
 def ppxf_helper(args):
     # Parse arguments
     templates, spec_log, spec_err_log, noise_scaling_factor,\
-        velscale, start_age_met, good_px, nmoments_age_met, adegree_age_met,\
-        mdegree_age_met, dv, lambda_vals_log, regul, reddening_fm07,\
+        velscale, start_kin, good_px, nmoments, adegree,\
+        mdegree, dv, lambda_vals_log, regul, reddening, reddening_fm07,\
         reg_dim, kinematic_components, gas_component, gas_names,\
-        gas_reddening = args
+        gas_reddening, sky = args
 
     # Run ppxf
     pp_age_met = ppxf(templates=templates,
           galaxy=spec_log, noise=spec_err_log * noise_scaling_factor,
-          velscale=np.squeeze(velscale), start=start_age_met,
+          velscale=np.squeeze(velscale), start=start_kin,
           goodpixels=good_px,
-          moments=nmoments_age_met, degree=adegree_age_met, mdegree=mdegree_age_met,
+          moments=nmoments, degree=adegree, mdegree=mdegree,
           vsyst=dv,
           lam=np.exp(lambda_vals_log),
           regul=regul,
-          reddening_func=reddening_fm07,
+          reddening=reddening, reddening_func=reddening_fm07,
           reg_dim=reg_dim,
           component=kinematic_components, gas_component=gas_component,
           gas_names=gas_names, gas_reddening=gas_reddening, method="capfit",
+          sky=sky,
           quiet=True)
 
     # Return
@@ -207,16 +208,18 @@ def run_ppxf(spec, spec_err, lambda_vals_A,
              z, ngascomponents,
              tie_balmer,
              isochrones, metals_to_use=None,
+             fit_agn_cont=False, alpha_nu_vals=[0.5, 1.0, 1.5, 2.0, 2.5],
              fit_gas=True,
+             mdegree=4, adegree=-1, reddening=None,
              FWHM_inst_A=FWHM_WIFES_INST_A,
              bad_pixel_ranges_A=[],
              lambda_norm_A=4020,
-             regularisation_method="auto",
+             regularisation_method="auto", regul_fixed=0, regul_start=0,
              auto_adjust_regul=False, regul_nthreads=20,
              delta_regul_min=5, regul_max=1e4,
              delta_delta_chi2_min=1,
              interactive_mode=False,
-             plotit=True, savefigs=False, fname_str="ppxftests"):
+             plotit=False, savefigs=False, fname_str="ppxftests"):
     """
     Wrapper function for calling ppxf.
 
@@ -231,14 +234,30 @@ def run_ppxf(spec, spec_err, lambda_vals_A,
                         format: [[lambda_1, lambda_2], ...]
     ngascomponents      Number of kinematic components to be fitted to the 
                         emission lines
-    
+    fit_gas             Whether to fit emission lines 
+    mdegree             Degree of multiplicative polynomial to use in the fit.
+                        Should be -1 for kinematic fitting
+    adegree             Degree of additive polynomial to use in the fit.
+                        Should be -1 for age + metallicity fitting
+    reddening           Initial estimate of the E(B - V) >= 0 to be used to 
+                        simultaneously fit a reddening curve to the stellar
+                        continuum. NOTE: this cannot be used simultaneously
+                        with mdegree.
+    fit_agn_cont        Whether to include a set of AGN power-law continuum
+                        templates in the fit. NOTE: for convenience, these use 
+                        the "sky" input argument to ppxf - which means that 
+                        if gas_reddening is used (instead of mpoly), ppxf will
+                        NOT apply an extinction correction to the templates.
+    alpha_nu_vals       Range of exponents to use in the power-law continuum.
     isochrones          Set of isochrones to use - must be Padova or Geneva
     tie_balmer          If true, use the Ha/Hb ratio to measure gas reddening.
     lambda_norm_A       Normalisation wavelength for computing the light-
                         ages.
     regularisation_method       
                         Method to use to determine the regularisation. 
-                        Options: "none", "auto", "interactive"
+                        Options: "none", "fixed", "auto", "interactive"
+    regul_fixed         Value of regul to use if regularisation_method is 
+                        "fixed"
     regul_nthreads      Number of threads to use for running simultaneous 
                         instances of ppxf if regularisation_method is "auto"
     delta_regul_min     Minimum spacing in regularisation before the program 
@@ -248,6 +267,10 @@ def run_ppxf(spec, spec_err, lambda_vals_A,
                         trying to find the minimum in regul space (make it a 
                         smaller value to speed up execution) if 
                         regularisation_method is "auto"
+    regul_start         Starting value for the regul parameter after the initial
+                        regul = 0 run. The first array of regul values that 
+                        will be run has start & endpoints
+                            [regul_start, regul_start + 1e4]
     delta_delta_chi2_min  
                         Minimum value that Δχ (goal) - Δχ must reach to stop
                         execution if regularisation_method is "auto"
@@ -261,8 +284,13 @@ def run_ppxf(spec, spec_err, lambda_vals_A,
     """
     np.seterr(divide = "ignore")
 
-    assert regularisation_method in ["none", "auto", "interactive"],\
+    assert regularisation_method in ["none", "fixed", "auto", "interactive"],\
         "regularisation_method must be one of 'none', 'auto' or 'interactive'!"
+
+    if reddening is not None:
+        assert mdegree == -1, "If the reddening keyword is used, mdegree must equal -1!"
+    if mdegree != -1:
+        assert reddening is None, "If mdegree != -1, then reddening must be None!"
 
     ##############################################################################
     # Set up plotting
@@ -336,22 +364,11 @@ def run_ppxf(spec, spec_err, lambda_vals_A,
                 assert m in ['001', '004', '008', '020', '040'],\
                     f"Metallicity {m} for the {isochrones} isochrones not found!"
 
-    # pPXF parameters for the age & metallicity + gas fit
-    adegree_age_met = -1     # Should be zero for age + metallicity fitting
-    mdegree_age_met = 4     # Should be zero for kinematic fitting
+    # pPXF parameters
     ncomponents = ngascomponents + 1 if fit_gas else 1    # number of kinematic components. 2 = stars + gas; 3 = stars + 2 * gas
-    nmoments_age_met = [2 for i in range(ncomponents)]
-    start_age_met = [[vel, 100.] for i in range(ncomponents)] if fit_gas else [vel, 100.]
-    fixed_age_met = [[0, 0] for i in range(ncomponents)] if fit_gas else [0, 0]
-    # tie_balmer = True if grating == "COMB" else False
+    nmoments = [2 for i in range(ncomponents)]
+    start_kin = [[vel, 100.] for i in range(ncomponents)] if fit_gas else [vel, 100.]
     limit_doublets = False
-
-    # pPXF parameters for the stellar kinematics fit
-    adegree_kin = 12   # Should be zero for age + metallicity fitting
-    mdegree_kin = 0   # Should be zero for kinematic fitting
-    nmoments_kin = 2    # 2: only fit radial velocity and velocity dispersion
-    start_kin = [vel, 100.]
-    fixed_kin = [0, 0]
 
     ##############################################################################
     # SSP templates
@@ -360,7 +377,21 @@ def run_ppxf(spec, spec_err, lambda_vals_A,
         log_rebin_and_convolve_stellar_templates(isochrones, metals_to_use, 
                                                  FWHM_inst_A=FWHM_WIFES_INST_A, 
                                                  velscale=velscale)
-    
+
+    if fit_agn_cont:
+        # Add power-law templates to replicate an AGN continuum
+        # To use the "sky" argument these need to be evaluated at the 
+        # wavelength grid of the input (linearly spaced) spectrum
+        agn_templates = np.zeros((len(lambda_vals_A), len(alpha_nu_vals)))
+        for aa, alpha_nu in enumerate(alpha_nu_vals):
+            alpha_lambda = 2 - alpha_nu
+            F_lambda_0 = 1 / (lambda_norm_A**(-alpha_lambda))
+            F_lambda = F_lambda_0 * lambda_vals_A**(-alpha_lambda)
+            agn_templates[:, aa] = F_lambda
+        sky = agn_templates
+    else:
+        sky = None
+
     # Regularisation dimensions
     N_metallicities = len(metallicities)
     N_ages = len(ages)
@@ -451,7 +482,10 @@ def run_ppxf(spec, spec_err, lambda_vals_A,
     ##########################################################################
     def compute_mass_weights(pp):
         # Reshape the normalisation factors into the same shape as the ppxf weights
-        weights_light_weighted_normed = pp.weights
+        if pp.sky is not None:
+            weights_light_weighted_normed = pp.weights[:pp.ntemp]
+        else:
+            weights_light_weighted_normed = pp.weights
         weights_light_weighted_normed = np.reshape(
             weights_light_weighted_normed[~pp.gas_component], (N_metallicities, N_ages))
 
@@ -467,7 +501,10 @@ def run_ppxf(spec, spec_err, lambda_vals_A,
         # Reshape the normalisation factors into the same shape as the ppxf weights
         # Un-normalise the weights so that they are in units of Msun/(erg/s/Å) 
         # at the normalisation wavelength (by default 4020 Å)
-        weights_light_weighted = pp.weights * norm
+        if pp.sky is not None:
+            weights_light_weighted = pp.weights[:pp.ntemp] * norm
+        else:
+            weights_light_weighted = pp.weights * norm
         weights_light_weighted = np.reshape(
             weights_light_weighted[~pp.gas_component], (N_metallicities, N_ages))
 
@@ -518,39 +555,38 @@ def run_ppxf(spec, spec_err, lambda_vals_A,
     ##########################################################################
     # Use pPXF to obtain the stellar age + metallicity, and fit emission lines
     ##########################################################################
+    delta_chi2_ideal = np.sqrt(2 * len(good_px))
     if regularisation_method == "none":
         # If no regularisation is required, then just run once and exit.
-        regul = 0
-        delta_chi2_ideal = np.sqrt(2 * len(good_px))
+        noise_scaling_factor = 1
         pp = ppxf(templates=templates,
                   galaxy=spec_log, noise=spec_err_log,
-                  velscale=np.squeeze(velscale), start=start_age_met,
+                  velscale=np.squeeze(velscale), start=start_kin,
                   goodpixels=good_px,
-                  moments=nmoments_age_met, degree=adegree_age_met, mdegree=mdegree_age_met,
+                  moments=nmoments, degree=adegree, mdegree=mdegree,
                   vsyst=dv,
                   lam=np.exp(lambda_vals_log),
-                  regul=regul,
-                  reddening_func=reddening_fm07,
+                  regul=0,
+                  sky=sky,
+                  reddening=reddening, reddening_func=reddening_fm07,
                   reg_dim=reg_dim,
                   component=kinematic_components, gas_component=gas_component,
                   gas_names=gas_names, gas_reddening=gas_reddening, method="capfit",
                   quiet=True)
-
     else:
         # Otherwise, run ppxf the first time w/o regularisation. 
         ws = []  # List to store template weights from successive iterations 
         t = time()
-        regul = 0
-        delta_chi2_ideal = np.sqrt(2 * len(good_px))
         pp_age_met = ppxf(templates=templates,
                           galaxy=spec_log, noise=spec_err_log,
-                          velscale=np.squeeze(velscale), start=start_age_met,
+                          velscale=np.squeeze(velscale), start=start_kin,
                           goodpixels=good_px,
-                          moments=nmoments_age_met, degree=adegree_age_met, mdegree=mdegree_age_met,
+                          moments=nmoments, degree=adegree, mdegree=mdegree,
                           vsyst=dv,
                           lam=np.exp(lambda_vals_log),
-                          regul=regul,
-                          reddening_func=reddening_fm07,
+                          regul=0,
+                          sky=sky,
+                          reddening=reddening, reddening_func=reddening_fm07,
                           reg_dim=reg_dim,
                           component=kinematic_components, gas_component=gas_component,
                           gas_names=gas_names, gas_reddening=gas_reddening, method="capfit",
@@ -600,7 +636,33 @@ def run_ppxf(spec, spec_err, lambda_vals_A,
             if matplotlib.get_backend() != "agg" and interactive_mode:
                 hit_key_to_continue()
 
-        if regularisation_method == "interactive":
+        if regularisation_method == "fixed":
+            # Run ppxf one more time with a fixed regul factor, after scaling
+            # the noise vector appropriately
+            print(F"Iteration 1: Scaling noise by {np.sqrt(pp_age_met.chi2):.4f}...")
+            noise_scaling_factor = np.sqrt(pp_age_met.chi2)
+            pp = ppxf(templates=templates,
+                              galaxy=spec_log, noise=spec_err_log * noise_scaling_factor,
+                              velscale=np.squeeze(velscale), start=start_kin,
+                              goodpixels=good_px,
+                              moments=nmoments, degree=adegree, mdegree=mdegree,
+                              vsyst=dv,
+                              lam=np.exp(lambda_vals_log),
+                              regul=regul_fixed,
+                              sky=sky,
+                              reddening=reddening, reddening_func=reddening_fm07,
+                              reg_dim=reg_dim,
+                              component=kinematic_components, gas_component=gas_component,
+                              gas_names=gas_names, gas_reddening=gas_reddening, method="capfit")
+            delta_chi2 = (pp.chi2 - 1) * len(good_px)
+            print("----------------------------------------------------")
+            print(F"Desired Delta Chi^2: {delta_chi2_ideal:.4g}")
+            print(F"Current Delta Chi^2: {delta_chi2:.4g}")
+            print(F"Delta-Delta Chi^2: {np.abs(delta_chi2 - delta_chi2_ideal):.4g}")
+            print("----------------------------------------------------")
+            print(F"Elapsed time in PPXF: {time() - t:.2f} s")
+
+        elif regularisation_method == "interactive":
             # Run again but with regularization.
             print(F"Iteration 0: Scaling noise by {np.sqrt(pp_age_met.chi2):.4f}...")
             noise_scaling_factor = np.sqrt(pp_age_met.chi2)
@@ -617,13 +679,14 @@ def run_ppxf(spec, spec_err, lambda_vals_A,
                 t = time()
                 pp_age_met = ppxf(templates=templates,
                                   galaxy=spec_log, noise=spec_err_log * noise_scaling_factor,
-                                  velscale=np.squeeze(velscale), start=start_age_met,
+                                  velscale=np.squeeze(velscale), start=start_kin,
                                   goodpixels=good_px,
-                                  moments=nmoments_age_met, degree=adegree_age_met, mdegree=mdegree_age_met,
+                                  moments=nmoments, degree=adegree, mdegree=mdegree,
                                   vsyst=dv,
                                   lam=np.exp(lambda_vals_log),
                                   regul=regul,
-                                  reddening_func=reddening_fm07,
+                                  sky=sky,
+                                  reddening=reddening, reddening_func=reddening_fm07,
                                   reg_dim=reg_dim,
                                   component=kinematic_components, gas_component=gas_component,
                                   gas_names=gas_names, gas_reddening=gas_reddening, method="capfit")
@@ -690,13 +753,14 @@ def run_ppxf(spec, spec_err, lambda_vals_A,
             # Run again but with regularization.
             cnt = 1
             print("----------------------------------------------------")
-            print(F"Iteration {cnt}: Scaling noise by {np.sqrt(pp_age_met.chi2):.4f}...")
+            print(f"Iteration {cnt}: Scaling noise by {np.sqrt(pp_age_met.chi2):.4f}...")
             noise_scaling_factor = np.sqrt(pp_age_met.chi2)
 
             # Run ppxf a number of times & find the value of regul that minimises 
             # the difference between the ideal delta-chi2 and the real delta-chi2.
-            regul_vals = np.linspace(0, 1e4, regul_nthreads + 1)
+            regul_vals = np.linspace(regul_start, regul_start + 1e4, regul_nthreads + 1)
             delta_regul = np.diff(regul_vals)[0]
+            print(f"Iteration {cnt}: Regularisation parameter range: {regul_vals[0]}-{regul_vals[-1]} (n = {len(regul_vals)})")
 
             obj_vals = []  # "objective" fn
             pps = []
@@ -705,10 +769,10 @@ def run_ppxf(spec, spec_err, lambda_vals_A,
             args_list = [
                 [
                     templates, spec_log, spec_err_log, noise_scaling_factor,
-                    velscale, start_age_met, good_px, nmoments_age_met, adegree_age_met,
-                    mdegree_age_met, dv, lambda_vals_log, regul, reddening_fm07,
+                    velscale, start_kin, good_px, nmoments, adegree,
+                    mdegree, dv, lambda_vals_log, regul, reddening, reddening_fm07,
                     reg_dim, kinematic_components, gas_component, gas_names,
-                    gas_reddening
+                    gas_reddening, sky
                 ] for regul in regul_vals
             ]
 
@@ -805,8 +869,14 @@ def run_ppxf(spec, spec_err, lambda_vals_A,
                 # If the lowest regul value is "maxed out" then try again with an array starting at the highest regul value
                 elif regul_vals[opt_idx] == np.nanmax(regul_vals):
                     regul_span = np.nanmax(regul_vals) - np.nanmin(regul_vals)
-                    regul_vals = np.linspace(np.nanmax(regul_vals),
-                                             np.nanmax(regul_vals) + regul_span,
+                    regul_vals = np.linspace(np.nanmax(regul_vals) - regul_span / 2,
+                                             np.nanmax(regul_vals) + regul_span / 2,
+                                             regul_nthreads + 1)
+                # If the lowest regul value is "minned out" then try again with an array ending with the lowest regul value
+                elif regul_vals[opt_idx] == np.nanmin(regul_vals):
+                    regul_span = np.nanmax(regul_vals) - np.nanmin(regul_vals)
+                    regul_vals = np.linspace(np.nanmin(regul_vals) - regul_span / 2,
+                                             np.nanmin(regul_vals) + regul_span / 2,
                                              regul_nthreads + 1)
                 # Otherwise, sub-sample the previous array windowed around the optimal value.
                 else:
@@ -822,16 +892,17 @@ def run_ppxf(spec, spec_err, lambda_vals_A,
                 args_list = [
                     [
                         templates, spec_log, spec_err_log, noise_scaling_factor,
-                        velscale, start_age_met, good_px, nmoments_age_met, adegree_age_met,
-                        mdegree_age_met, dv, lambda_vals_log, regul, reddening_fm07,
+                        velscale, start_kin, good_px, nmoments, adegree,
+                        mdegree, dv, lambda_vals_log, regul, reddening, reddening_fm07,
                         reg_dim, kinematic_components, gas_component, gas_names,
-                        gas_reddening
+                        gas_reddening, sky
                     ] for regul in regul_vals
                 ]
 
                 # Run in parallel
                 cnt += 1
                 print(f"Iteration {cnt}: Re-running ppxf on {regul_nthreads} threads (iteration {cnt})...")
+                print(f"Iteration {cnt}: Regularisation parameter range: {regul_vals[0]}-{regul_vals[-1]} (n = {len(regul_vals)})")
                 t = time()
                 pool = multiprocessing.Pool(regul_nthreads)
                 pps = list(pool.map(ppxf_helper, args_list))
@@ -911,9 +982,21 @@ def run_ppxf(spec, spec_err, lambda_vals_A,
     ##########################################################################
     # Add some extra useful stuff to the ppxf instance
     ##########################################################################
+    # Template ages and metallicities
+    pp.isochrones = isochrones
+    pp.ages = ages 
+    pp.metallicities = metallicities
+
+    # Convergence criteria 
+    pp.noise_scaling_factor = noise_scaling_factor
+    pp.regularisation_method = regularisation_method
+    pp.delta_chi2_ideal = delta_chi2_ideal
+    pp.delta_chi2 = (pp.chi2 - 1) * len(good_px)
+    pp.delta_delta_chi2 = np.abs(pp.delta_chi2 - pp.delta_chi2_ideal)
+
+    # Mass & light-weighted template weights 
     pp.weights_mass_weighted = compute_mass_weights(pp)  # Mass-weighted template weights
     pp.weights_light_weighted = compute_light_weights(pp)
-    # pp.weights_light_weighted = np.reshape(pp.weights[~pp.gas_component], (N_metallicities, N_ages))
     pp.norm = norm  # Normalisation factor for the logarithmically binned input spectrum
     pp.stellar_template_norms = stellar_template_norms  # Normalisation factors for the logarithmically binned stellar templates
 
@@ -924,6 +1007,22 @@ def run_ppxf(spec, spec_err, lambda_vals_A,
     # Compute the mean SFR in each bin
     bin_edges, bin_widths = get_bin_edges_and_widths(isochrones)
     pp.sfr_mean = pp.sfh_mw_1D / bin_widths 
+
+    # AGN continuum parameters, if used 
+    if fit_agn_cont:
+        pp.alpha_nu_vals = alpha_nu_vals
+        pp.fit_agn_cont = True
+        pp.weights_agn = pp.weights[pp.ntemp:] 
+        nsky = pp.sky.shape[1]
+        if nsky == 1:
+            pp.agn_bestfit = np.squeeze(pp.sky) * pp.weights[-nsky:]
+        else:
+            pp.agn_bestfit = np.sum(pp.sky * pp.weights[-nsky:], axis=1)
+    else:
+        pp.alpha_nu_vals = None 
+        pp.fit_agn_cont = False
+        pp.weights_agn = None
+        pp.agn_bestfit = None
 
     ##########################################################################
     # Plotting the fit
@@ -951,7 +1050,7 @@ def run_ppxf(spec, spec_err, lambda_vals_A,
 if __name__ == "__main__":
     from ppxftests.mockspec import create_mock_spectrum
     from ppxftests.ssputils import load_ssp_templates
-    from ppxftests.sfhutils import plot_sfh_mass_weighted
+    from ppxftests.sfhutils import plot_sfh_mass_weighted, load_sfh
 
 
     ###########################################################################
@@ -962,8 +1061,7 @@ if __name__ == "__main__":
     ###########################################################################
     # GALAXY PROPERTIES
     ###########################################################################
-    sigma_star_kms = 350   # LOS velocity dispersion, km/s
-    z = 0.05               # Redshift 
+    z = 0.00               # Redshift 
     SNR = 100               # S/N ratio
 
     ###########################################################################
@@ -975,56 +1073,91 @@ if __name__ == "__main__":
     N_ages = len(ages)
     N_metallicities = len(metallicities)
 
-    sfh_input = np.zeros((N_metallicities, N_ages))
-    # sfh_input[1, 10] = 1e7
-    sfh_input[2, 4] = 1e10
-    plot_sfh_mass_weighted(sfh_input, ages, metallicities)
+    # sfh_input = np.zeros((N_metallicities, N_ages))
+    # # sfh_input[1, 10] = 1e7
+    # sfh_input[2, 4] = 1e10
+    # sigma_star_kms = 200
+    # plot_sfh_mass_weighted(sfh_input, ages, metallicities)
+
+    # Realistic SFH
+    gal = 10
+    sfh_mw_input, sfh_lw_input, sfr_avg_input, sigma_star_kms = load_sfh(gal, plotit=True)
 
     ###########################################################################
     # CREATE THE MOCK SPECTRUM
     ###########################################################################
     spec, spec_err, lambda_vals_A = create_mock_spectrum(
-        sfh_mass_weighted=sfh_input,
+        sfh_mass_weighted=sfh_mw_input,
         isochrones=isochrones, z=z, SNR=SNR, sigma_star_kms=sigma_star_kms,
         plotit=False)    
+
+    # Add an AGN continuum
+    lambda_norm_A = 4020
+    lambda_norm_idx = np.nanargmin(np.abs(lambda_vals_A - lambda_norm_A))
+    F_star_0 = spec[lambda_norm_idx]
+    F_agn_0 = 0.5 * F_star_0
+    alpha_lambda = 0.5
+    F_lambda_0 = F_agn_0 / lambda_norm_A**(-alpha_lambda)
+    F_agn = F_lambda_0 * lambda_vals_A**(-alpha_lambda)
+
+    plt.figure()
+    plt.plot(lambda_vals_A, spec)
+    plt.plot(lambda_vals_A, F_agn)
+    plt.plot(lambda_vals_A, spec + F_agn)
+    plt.axvline(lambda_norm_A, color="k")
 
     ###########################################################################
     # RUN PPXF
     ###########################################################################
-    pp = run_ppxf(spec=spec, spec_err=spec_err, lambda_vals_A=lambda_vals_A, 
+    pp_agn = run_ppxf(spec=spec + F_agn, spec_err=spec_err, lambda_vals_A=lambda_vals_A, 
                   z=z, ngascomponents=1,
                   regularisation_method="none",
+                  fit_agn_cont=True,
                   plotit=True,
                   isochrones="Padova", tie_balmer=True)
-    sfh_fit = pp.weights_mass_weighted
+    plt.gcf().suptitle("AGN templates included in fit")
 
-    ###########################################################################
-    # COMPARE THE INPUT AND OUTPUT
-    ###########################################################################
-    # side-by-side comparison of the SFHs, plus residual map
-    plot_sfh_mass_weighted(sfh_input, ages, metallicities)
-    plot_sfh_mass_weighted(sfh_fit, ages, metallicities)
+    pp_noagn = run_ppxf(spec=spec + F_agn, spec_err=spec_err, lambda_vals_A=lambda_vals_A, 
+                  z=z, ngascomponents=1,
+                  regularisation_method="none",
+                  fit_agn_cont=False,
+                  plotit=True,
+                  isochrones="Padova", tie_balmer=True)
+    plt.gcf().suptitle("No AGN templates included in fit")
 
-    # Plot the residual
-    fig, ax = plt.subplots(nrows=1, ncols=1, figsize=(10, 3.5))
-    bbox = ax.get_position()
-    cax = fig.add_axes([bbox.x0 + bbox.width, bbox.x0, 0.025, bbox.height])
+    # pp.sky stores the input sky templates
+    # when sky is not None, the sky template weights are stored in
+    #   pp.weights[pp.ntemp:]
+
+    # sfh_fit = pp.weights_mass_weighted
+
+    # ###########################################################################
+    # # COMPARE THE INPUT AND OUTPUT
+    # ###########################################################################
+    # # side-by-side comparison of the SFHs, plus residual map
+    # plot_sfh_mass_weighted(sfh_input, ages, metallicities)
+    # plot_sfh_mass_weighted(sfh_fit, ages, metallicities)
+
+    # # Plot the residual
+    # fig, ax = plt.subplots(nrows=1, ncols=1, figsize=(10, 3.5))
+    # bbox = ax.get_position()
+    # cax = fig.add_axes([bbox.x0 + bbox.width, bbox.x0, 0.025, bbox.height])
     
-    # Plot the SFH
-    delta_sfh = sfh_input - sfh_fit
-    m = ax.imshow(delta_sfh, cmap="coolwarm", 
-                  origin="lower", aspect="auto",
-                  vmin=-np.abs(np.nanmax(delta_sfh)), vmax=np.abs(np.nanmax(delta_sfh)))
-    fig.colorbar(m, cax=cax)
+    # # Plot the SFH
+    # delta_sfh = sfh_input - sfh_fit
+    # m = ax.imshow(delta_sfh, cmap="coolwarm", 
+    #               origin="lower", aspect="auto",
+    #               vmin=-np.abs(np.nanmax(delta_sfh)), vmax=np.abs(np.nanmax(delta_sfh)))
+    # fig.colorbar(m, cax=cax)
     
-    # Decorations
-    ax.set_yticks(range(len(metallicities)))
-    ax.set_yticklabels(["{:.3f}".format(met / 0.02) for met in metallicities])
-    ax.set_ylabel(r"Metallicity ($Z_\odot$)")
-    cax.set_ylabel(r"Residual (\rm M_\odot)$")
-    ax.set_xticks(range(len(ages)))
-    ax.set_xlabel("Age (Myr)")
-    ax.set_xticklabels(["{:}".format(age / 1e6) for age in ages], rotation="vertical")
-    ax.autoscale(axis="x", enable=True, tight=True)
-    ax.grid()
+    # # Decorations
+    # ax.set_yticks(range(len(metallicities)))
+    # ax.set_yticklabels(["{:.3f}".format(met / 0.02) for met in metallicities])
+    # ax.set_ylabel(r"Metallicity ($Z_\odot$)")
+    # cax.set_ylabel(r"Residual (\rm M_\odot)$")
+    # ax.set_xticks(range(len(ages)))
+    # ax.set_xlabel("Age (Myr)")
+    # ax.set_xticklabels(["{:}".format(age / 1e6) for age in ages], rotation="vertical")
+    # ax.autoscale(axis="x", enable=True, tight=True)
+    # ax.grid()
 
