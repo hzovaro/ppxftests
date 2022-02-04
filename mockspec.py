@@ -1,10 +1,13 @@
 # Imports
 import os 
 import numpy as np
+from numpy.random import RandomState
 
 from scipy import constants
 from scipy.signal import convolve
 from scipy.interpolate import CubicSpline
+
+import extinction
 
 from itertools import product
 
@@ -44,6 +47,8 @@ def create_mock_spectrum(sfh_mass_weighted, isochrones, sigma_star_kms, z, SNR,
                          ngascomponents=0, sigma_gas_kms=[], v_gas_kms=[], 
                          eline_model=[], L_Ha_erg_s=[], 
                          agn_continuum=False, alpha_nu=2.0, x_AGN=0, lambda_norm_A=4020,
+                         A_V=0.0,
+                         seed=0,
                          metals_to_use=None, plotit=True):
     
     """
@@ -91,6 +96,9 @@ def create_mock_spectrum(sfh_mass_weighted, isochrones, sigma_star_kms, z, SNR,
     x_AGN                   Fraction of continuum at lambda_norm_A from the 
                             power-law AGN continuum
     lambda_norm_A           Normalisation wavelength for the AGN continuum
+    A_V                     Extinction to assume for the stellar component.
+    seed                    Seed for the random number generator for making
+                            noise.
     Returns:
     spec, spec_err          mock spectrum and corresponding 1-sigma errors, in
                             units of erg/s. 
@@ -330,7 +338,7 @@ def create_mock_spectrum(sfh_mass_weighted, isochrones, sigma_star_kms, z, SNR,
             ax.autoscale(enable="True", axis="x", tight=True)
 
     ###########################################################################
-    # 5b. Add AGN continuum, if needed
+    # 4c. Add AGN continuum, if needed
     # References:
     # http://www.chara.gsu.edu/~crenshaw/4.AGN_Components.pdf
     # https://www.astro.rug.nl/~koopmans/lecture6.pdf
@@ -366,6 +374,31 @@ def create_mock_spectrum(sfh_mass_weighted, isochrones, sigma_star_kms, z, SNR,
             ax.autoscale(enable="True", axis="x", tight=True)
 
     ###########################################################################
+    # 4d. Apply extinction
+    if A_V > 0:
+        R_V = 3.1
+        A_vals = extinction.calzetti00(wave=np.exp(lambda_vals_ssp_log), a_v=A_V, r_v=R_V, unit="aa")
+        spec_log_conv_prev = np.copy(spec_log_conv)
+        spec_log_conv *= 10**(-0.4 * A_vals)
+
+        if plotit:
+            fig, axs = plt.subplots(nrows=2, ncols=1, figsize=(fig_w, 2 * fig_h))
+            axs[0].plot(np.exp(lambda_vals_ssp_log), spec_log_conv_prev, color="black", alpha=0.5, label="Before extinction")
+            axs[0].plot(np.exp(lambda_vals_ssp_log), spec_log, color="black", label="After extinction")
+            axs[0].set_ylabel(f"$L$ (erg/s/$\AA$)")
+            axs[0].set_xlabel(f"$\lambda$")
+            axs[0].legend()
+            axs[0].set_ylim([0, None])
+            axs[0].autoscale(enable="True", axis="x", tight=True)
+            axs[1].plot(np.exp(lambda_vals_ssp_log), 10**(-0.4 * A_vals), color="black", label=r"Extinction curve $(10^{-0.4 A(\lambda)})$")
+            axs[1].set_ylabel(f"Extinction factor")
+            axs[1].set_xlabel(f"$\lambda$")
+            axs[1].legend()
+            axs[1].set_ylim([0, None])
+            axs[1].autoscale(enable="True", axis="x", tight=True)
+
+
+    ###########################################################################
     # 5. Apply the redshift 
     lambda_vals_ssp_log_redshifted = lambda_vals_ssp_log + np.log(1 + z)
 
@@ -388,8 +421,9 @@ def create_mock_spectrum(sfh_mass_weighted, isochrones, sigma_star_kms, z, SNR,
     ###########################################################################
     # 9. Add noise. 
     if not np.isinf(SNR):
+        rng = RandomState(seed)
         spec_err = spec_wifes / SNR
-        noise = np.random.normal(loc=0, scale=spec_err)
+        noise = rng.normal(loc=0, scale=spec_err)
         spec = spec_wifes + noise
     else:
         spec_err = np.zeros(spec_wifes.shape)
