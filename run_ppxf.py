@@ -48,7 +48,7 @@ matplotlib.rc("text", usetex=False)
 matplotlib.rc("font", **{"family": "serif"})
 matplotlib.rc("image", interpolation="nearest")
 matplotlib.rc("image", origin="lower")
-plt.close("all")
+# plt.close("all")
 plt.ion()
 
 ##############################################################################
@@ -61,7 +61,7 @@ def hit_key_to_continue():
     return
 
 ##############################################################################
-# For using the FM07 reddening curve in ppxf
+# For fitting extinction in ppxf
 ##############################################################################
 def reddening_fm07(lam, ebv):
     # lam in Angstroms
@@ -69,7 +69,18 @@ def reddening_fm07(lam, ebv):
     # fm07 takes as input lambda and A_V, so we first need to convert E(B-V)
     # into A_V
     A_V = 3.1 * ebv
-    A_lambda = extinction.fm07(lam, a_v=A_V, unit='aa')
+    A_lambda = extinction.fm07(wave=lam, a_v=A_V, unit='aa')
+    fact = 10**(-0.4 * A_lambda)  # Need a minus sign here!
+    return fact
+
+def reddening_calzetti00(lam, ebv):
+    # lam in Angstroms
+    # Need to derive A(lambda) from E(B-V)
+    # calzetti00 takes as input lambda and A_V, so we first need to convert E(B-V)
+    # into A_V
+    R_V = 3.1
+    A_V = R_V * ebv
+    A_lambda = extinction.calzetti00(wave=lam, a_v=A_V, r_v=R_V, unit='aa')
     fact = 10**(-0.4 * A_lambda)  # Need a minus sign here!
     return fact
 
@@ -178,7 +189,7 @@ def ppxf_helper(args):
     # Parse arguments
     templates, spec_log, spec_err_log, noise_scaling_factor,\
         velscale, start_kin, good_px, nmoments, adegree,\
-        mdegree, dv, lambda_vals_log, regul, reddening, reddening_fm07,\
+        mdegree, dv, lambda_vals_log, regul, reddening, reddening_calzetti00,\
         reg_dim, kinematic_components, gas_component, gas_names,\
         gas_reddening, sky = args
 
@@ -191,7 +202,7 @@ def ppxf_helper(args):
           vsyst=dv,
           lam=np.exp(lambda_vals_log),
           regul=regul,
-          reddening=reddening, reddening_func=reddening_fm07,
+          reddening=reddening, reddening_func=reddening_calzetti00,
           reg_dim=reg_dim,
           component=kinematic_components, gas_component=gas_component,
           gas_names=gas_names, gas_reddening=gas_reddening, method="capfit",
@@ -204,22 +215,21 @@ def ppxf_helper(args):
 ##############################################################################
 # START FUNCTION DEFINITION
 ##############################################################################
-def run_ppxf(spec, spec_err, lambda_vals_A,
-             z, ngascomponents,
-             tie_balmer,
+def run_ppxf(spec, spec_err, lambda_vals_A, z, 
              isochrones, metals_to_use=None,
              fit_agn_cont=False, alpha_nu_vals=[0.5, 1.0, 1.5, 2.0, 2.5],
-             fit_gas=True,
+             fit_gas=True, ngascomponents=0, tie_balmer=True,
              mdegree=4, adegree=-1, reddening=None,
              FWHM_inst_A=FWHM_WIFES_INST_A,
              bad_pixel_ranges_A=[],
              lambda_norm_A=4020,
-             regularisation_method="auto", regul_fixed=0, regul_start=0,
+             regularisation_method="auto", regul_fixed=0, 
              auto_adjust_regul=False, regul_nthreads=20,
-             delta_regul_min=5, regul_max=1e4,
-             delta_delta_chi2_min=1,
+             regul_start=0, regul_span=1e4,
+             delta_regul_min=1, regul_max=10e4, delta_delta_chi2_min=1,
              interactive_mode=False,
-             plotit=False, savefigs=False, fname_str="ppxftests"):
+             plotit=False, savefigs=False, fname_str="ppxftests",
+             reg_dim=None):
     """
     Wrapper function for calling ppxf.
 
@@ -270,7 +280,8 @@ def run_ppxf(spec, spec_err, lambda_vals_A,
     regul_start         Starting value for the regul parameter after the initial
                         regul = 0 run. The first array of regul values that 
                         will be run has start & endpoints
-                            [regul_start, regul_start + 1e4]
+                            [regul_start, regul_start + regul_span]
+    regul_span          Initial span of regul array.
     delta_delta_chi2_min  
                         Minimum value that Δχ (goal) - Δχ must reach to stop
                         execution if regularisation_method is "auto"
@@ -377,6 +388,12 @@ def run_ppxf(spec, spec_err, lambda_vals_A,
         log_rebin_and_convolve_stellar_templates(isochrones, metals_to_use, 
                                                  FWHM_inst_A=FWHM_WIFES_INST_A, 
                                                  velscale=velscale)
+    
+    print("HACKYYYYYYYY DONT FORGET TO DELETE!!!!")
+    n_agn_templates = 1
+    agn_templates = np.ones((lambda_vals_ssp_log.shape[0], n_agn_templates))
+    stellar_templates_log = np.column_stack([stellar_templates_log, agn_templates])
+    print("HACKYYYYYYYY DONT FORGET TO DELETE!!!!")
 
     if fit_agn_cont:
         # Add power-law templates to replicate an AGN continuum
@@ -395,7 +412,8 @@ def run_ppxf(spec, spec_err, lambda_vals_A,
     # Regularisation dimensions
     N_metallicities = len(metallicities)
     N_ages = len(ages)
-    reg_dim = (N_metallicities, N_ages)
+    if reg_dim is None:
+        reg_dim = (N_metallicities, N_ages)
 
     # Normalise
     lambda_norm_idx = np.nanargmin(np.abs(np.exp(lambda_vals_ssp_log) - lambda_norm_A))
@@ -403,7 +421,9 @@ def run_ppxf(spec, spec_err, lambda_vals_A,
     stellar_templates_log /= stellar_template_norms
 
     # Reshape
-    stellar_template_norms = np.reshape(stellar_template_norms, (N_metallicities, N_ages))
+    print("HACKYYYYYYYY DONT FORGET TO DELETE!!!!")
+    stellar_template_norms = np.reshape(stellar_template_norms[:-n_agn_templates], (N_metallicities, N_ages))
+    print("HACKYYYYYYYY DONT FORGET TO DELETE!!!!")
 
     # This line only works if velscale_ratio = 1
     dv = (lambda_vals_ssp_log[0] - lambda_vals_log[0]) * constants.c / 1e3  # km/s
@@ -415,7 +435,7 @@ def run_ppxf(spec, spec_err, lambda_vals_A,
         ##############################################################################
         # Gas templates
         ##############################################################################
-        # Construct a set of Gaussian emission line stellar_templates_log.
+        # Construct a set of Gaussian emission line templates
         # Estimate the wavelength fitted range in the rest frame.
         gas_templates, gas_names, eline_lambdas = util.emission_lines(
             logLam_temp=lambda_vals_ssp_log,
@@ -487,7 +507,7 @@ def run_ppxf(spec, spec_err, lambda_vals_A,
         else:
             weights_light_weighted_normed = pp.weights
         weights_light_weighted_normed = np.reshape(
-            weights_light_weighted_normed[~pp.gas_component], (N_metallicities, N_ages))
+            weights_light_weighted_normed[~pp.gas_component][:-n_agn_templates], (N_metallicities, N_ages))
 
         # Convert the light-weighted ages into mass-weighted ages
         weights_mass_weighted = weights_light_weighted_normed * norm / stellar_template_norms
@@ -506,7 +526,7 @@ def run_ppxf(spec, spec_err, lambda_vals_A,
         else:
             weights_light_weighted = pp.weights * norm
         weights_light_weighted = np.reshape(
-            weights_light_weighted[~pp.gas_component], (N_metallicities, N_ages))
+            weights_light_weighted[~pp.gas_component][:-n_agn_templates], (N_metallicities, N_ages))
 
         return weights_light_weighted
 
@@ -568,7 +588,7 @@ def run_ppxf(spec, spec_err, lambda_vals_A,
                   lam=np.exp(lambda_vals_log),
                   regul=0,
                   sky=sky,
-                  reddening=reddening, reddening_func=reddening_fm07,
+                  reddening=reddening, reddening_func=reddening_calzetti00,
                   reg_dim=reg_dim,
                   component=kinematic_components, gas_component=gas_component,
                   gas_names=gas_names, gas_reddening=gas_reddening, method="capfit",
@@ -586,7 +606,7 @@ def run_ppxf(spec, spec_err, lambda_vals_A,
                           lam=np.exp(lambda_vals_log),
                           regul=0,
                           sky=sky,
-                          reddening=reddening, reddening_func=reddening_fm07,
+                          reddening=reddening, reddening_func=reddening_calzetti00,
                           reg_dim=reg_dim,
                           component=kinematic_components, gas_component=gas_component,
                           gas_names=gas_names, gas_reddening=gas_reddening, method="capfit",
@@ -604,34 +624,34 @@ def run_ppxf(spec, spec_err, lambda_vals_A,
             w = w.squeeze()
 
         if plotit:
-            plt.close("all")
+            # plt.close("all")
             plot_wrapper(pp_age_met, ages, metallicities)
             fig = plt.gcf()
             fig.suptitle(f"First ppxf iteration: regul = 0")
             if savefigs:
                 pdfpages_spec.savefig(fig, bbox_inches="tight")
 
-            # SFH change 
-            fig_sfh, axs_sfh = plt.subplots(nrows=2, ncols=1, figsize=(15, 10))
-            fig_sfh.subplots_adjust(hspace=0)
-            fig_sfh.suptitle(f"First ppxf iteration: regul = 0")
-            axs_sfh[0].step(x=range(len(w)), y=w, where="mid", label=f"Iteration 0")
-            axs_sfh[0].set_xlabel("Template age")
-            axs_sfh[0].set_ylabel(r"$\log_{10} (M_* [\rm M_\odot])$")
-            axs_sfh[0].set_yscale("log")
-            axs_sfh[0].set_ylim([10^0, None])
-            axs_sfh[0].autoscale(axis="x", enable=True, tight=True)
-            axs_sfh[0].grid()
-            axs_sfh[0].legend()
+            # # SFH change 
+            # fig_sfh, axs_sfh = plt.subplots(nrows=2, ncols=1, figsize=(15, 10))
+            # fig_sfh.subplots_adjust(hspace=0)
+            # fig_sfh.suptitle(f"First ppxf iteration: regul = 0")
+            # axs_sfh[0].step(x=range(len(w)), y=w, where="mid", label=f"Iteration 0")
+            # axs_sfh[0].set_xlabel("Template age")
+            # axs_sfh[0].set_ylabel(r"$\log_{10} (M_* [\rm M_\odot])$")
+            # axs_sfh[0].set_yscale("log")
+            # axs_sfh[0].set_ylim([10^0, None])
+            # axs_sfh[0].autoscale(axis="x", enable=True, tight=True)
+            # axs_sfh[0].grid()
+            # axs_sfh[0].legend()
 
-            axs_sfh[1].axhline(0, color="gray")
-            axs_sfh[1].set_xticks(range(len(ages)))
-            axs_sfh[1].set_xticklabels([f"{age / 1e6}" for age in ages], rotation="vertical")
-            axs_sfh[1].autoscale(axis="x", enable=True, tight=True)
-            axs_sfh[1].grid()
-            fig_sfh.canvas.draw()
-            if savefigs:
-                pdfpages_sfh.savefig(fig_sfh, bbox_inches="tight")
+            # axs_sfh[1].axhline(0, color="gray")
+            # axs_sfh[1].set_xticks(range(len(ages)))
+            # axs_sfh[1].set_xticklabels([f"{age / 1e6}" for age in ages], rotation="vertical")
+            # axs_sfh[1].autoscale(axis="x", enable=True, tight=True)
+            # axs_sfh[1].grid()
+            # fig_sfh.canvas.draw()
+            # if savefigs:
+            #     pdfpages_sfh.savefig(fig_sfh, bbox_inches="tight")
 
             if matplotlib.get_backend() != "agg" and interactive_mode:
                 hit_key_to_continue()
@@ -650,7 +670,7 @@ def run_ppxf(spec, spec_err, lambda_vals_A,
                               lam=np.exp(lambda_vals_log),
                               regul=regul_fixed,
                               sky=sky,
-                              reddening=reddening, reddening_func=reddening_fm07,
+                              reddening=reddening, reddening_func=reddening_calzetti00,
                               reg_dim=reg_dim,
                               component=kinematic_components, gas_component=gas_component,
                               gas_names=gas_names, gas_reddening=gas_reddening, method="capfit")
@@ -686,7 +706,7 @@ def run_ppxf(spec, spec_err, lambda_vals_A,
                                   lam=np.exp(lambda_vals_log),
                                   regul=regul,
                                   sky=sky,
-                                  reddening=reddening, reddening_func=reddening_fm07,
+                                  reddening=reddening, reddening_func=reddening_calzetti00,
                                   reg_dim=reg_dim,
                                   component=kinematic_components, gas_component=gas_component,
                                   gas_names=gas_names, gas_reddening=gas_reddening, method="capfit")
@@ -709,7 +729,7 @@ def run_ppxf(spec, spec_err, lambda_vals_A,
                 delta_m = np.nansum(dw)
 
                 if plotit:
-                    plt.close("all")
+                    # plt.close("all")
                     plot_wrapper(pp_age_met, ages, metallicities)
                     fig = plt.gcf()
                     fig.suptitle(f"Manually determining regul parameter: regul = {regul:.2f} (iteration {cnt})")
@@ -758,7 +778,7 @@ def run_ppxf(spec, spec_err, lambda_vals_A,
 
             # Run ppxf a number of times & find the value of regul that minimises 
             # the difference between the ideal delta-chi2 and the real delta-chi2.
-            regul_vals = np.linspace(regul_start, regul_start + 1e4, regul_nthreads + 1)
+            regul_vals = np.linspace(regul_start, regul_start + regul_span, regul_nthreads)
             delta_regul = np.diff(regul_vals)[0]
             print(f"Iteration {cnt}: Regularisation parameter range: {regul_vals[0]}-{regul_vals[-1]} (n = {len(regul_vals)})")
 
@@ -770,7 +790,7 @@ def run_ppxf(spec, spec_err, lambda_vals_A,
                 [
                     templates, spec_log, spec_err_log, noise_scaling_factor,
                     velscale, start_kin, good_px, nmoments, adegree,
-                    mdegree, dv, lambda_vals_log, regul, reddening, reddening_fm07,
+                    mdegree, dv, lambda_vals_log, regul, reddening, reddening_calzetti00,
                     reg_dim, kinematic_components, gas_component, gas_names,
                     gas_reddening, sky
                 ] for regul in regul_vals
@@ -866,26 +886,30 @@ def run_ppxf(spec, spec_err, lambda_vals_A,
                 elif opt_idx == len(regul_vals) - 1 and regul_vals[opt_idx] >= regul_max:
                     print(f"STOPPING: Optimal regul value is >= {regul_max}; using {regul_vals[opt_idx]:.2f} to produce the best fit")
                     break
+                
                 # If the lowest regul value is "maxed out" then try again with an array starting at the highest regul value
                 elif regul_vals[opt_idx] == np.nanmax(regul_vals):
                     regul_span = np.nanmax(regul_vals) - np.nanmin(regul_vals)
-                    regul_vals = np.linspace(np.nanmax(regul_vals) - regul_span / 2,
-                                             np.nanmax(regul_vals) + regul_span / 2,
-                                             regul_nthreads + 1)
+                    regul_0 = np.nanmax(regul_vals) - delta_regul
+                    regul_end = np.nanmax(regul_vals) - delta_regul + regul_span
+                    regul_vals = np.linspace(regul_0, regul_end, regul_nthreads)
+                
                 # If the lowest regul value is "minned out" then try again with an array ending with the lowest regul value
                 elif regul_vals[opt_idx] == np.nanmin(regul_vals):
                     regul_span = np.nanmax(regul_vals) - np.nanmin(regul_vals)
-                    regul_vals = np.linspace(np.nanmin(regul_vals) - regul_span / 2,
-                                             np.nanmin(regul_vals) + regul_span / 2,
-                                             regul_nthreads + 1)
+                    regul_0 = np.nanmin(regul_vals) + delta_regul - regul_span
+                    regul_end = np.nanmin(regul_vals) + delta_regul
+                
                 # Otherwise, sub-sample the previous array windowed around the optimal value.
                 else:
                     delta_regul /= 5
-                    regul_vals = np.linspace(regul_vals[opt_idx] - regul_nthreads / 2 * delta_regul, 
-                                             regul_vals[opt_idx] + regul_nthreads / 2 * delta_regul,
-                                             regul_nthreads + 1)
+                    regul_0 = regul_vals[opt_idx] - regul_nthreads / 2 * delta_regul
+                    regul_end = regul_vals[opt_idx] + regul_nthreads / 2 * delta_regul
 
                 # Reset the values
+                regul_0 = 0 if regul_0 < 0 else regul_0  # If regul_0 < 0, set the starting point to 0, since there's no point running ppxf for -ve values.
+                regil_end = regul_max if regul_end > regul_max else regul_end
+                regul_vals = np.linspace(regul_0, regul_end, regul_nthreads)
                 delta_regul = np.diff(regul_vals)[0]
 
                 # Re-run ppxf
@@ -893,7 +917,7 @@ def run_ppxf(spec, spec_err, lambda_vals_A,
                     [
                         templates, spec_log, spec_err_log, noise_scaling_factor,
                         velscale, start_kin, good_px, nmoments, adegree,
-                        mdegree, dv, lambda_vals_log, regul, reddening, reddening_fm07,
+                        mdegree, dv, lambda_vals_log, regul, reddening, reddening_calzetti00,
                         reg_dim, kinematic_components, gas_component, gas_names,
                         gas_reddening, sky
                     ] for regul in regul_vals
@@ -1030,8 +1054,10 @@ def run_ppxf(spec, spec_err, lambda_vals_A,
     if plotit:
         plot_wrapper(pp, ages, metallicities)
         fig = plt.gcf()
-        if regularisation_method != "none":
+        if regularisation_method == "auto" or regularisation_method == "interactive": 
             regul_final = regul_vals[opt_idx]
+        elif regularisation_method == "fixed":
+            regul_final = regul_fixed
         else:
             regul_final = regul
         fig.suptitle(f"Best fit (regul = {regul_final:.2f})")
