@@ -15,6 +15,7 @@ import numpy as np
 from IPython.core.debugger import Tracer
 
 from ppxftests.ssputils import load_ssp_templates
+from ppxftests.sfhutils import compute_mw_age, compute_lw_age, compute_cumulative_mass, compute_cumulative_light, compute_mean_1D_sfh
 
 ###################################################################
 def plot_ppxf_summary(sfh_lw_input, sfh_mw_input,
@@ -54,9 +55,9 @@ def plot_ppxf_summary(sfh_lw_input, sfh_mw_input,
     ages_mw_regul = [10**compute_mw_age(sfh_mw_1D_regul, isochrones=isochrones, age_thresh_lower=None, age_thresh_upper=age_thresh_upper)[0] for age_thresh_upper in ages[1:]]
 
     # Compute weighted ages
-    masses_input = [compute_mass(sfh_mw_1D_input, isochrones=isochrones, age_thresh_lower=None, age_thresh_upper=age_thresh_upper) for age_thresh_upper in ages[1:]]
-    masses_MC = [compute_mass(sfh_mw_1D_MC, isochrones=isochrones, age_thresh_lower=None, age_thresh_upper=age_thresh_upper) for age_thresh_upper in ages[1:]]
-    masses_regul = [compute_mass(sfh_mw_1D_regul, isochrones=isochrones, age_thresh_lower=None, age_thresh_upper=age_thresh_upper) for age_thresh_upper in ages[1:]]
+    masses_input = [compute_cumulative_mass(sfh_mw_1D_input, isochrones=isochrones, age_thresh_lower=None, age_thresh_upper=age_thresh_upper) for age_thresh_upper in ages[1:]]
+    masses_MC = [compute_cumulative_mass(sfh_mw_1D_MC, isochrones=isochrones, age_thresh_lower=None, age_thresh_upper=age_thresh_upper) for age_thresh_upper in ages[1:]]
+    masses_regul = [compute_cumulative_mass(sfh_mw_1D_regul, isochrones=isochrones, age_thresh_lower=None, age_thresh_upper=age_thresh_upper) for age_thresh_upper in ages[1:]]
 
     ###################################################################
     # Plot the SFH
@@ -121,19 +122,19 @@ def plot_ppxf_summary(sfh_lw_input, sfh_mw_input,
     ###################################################################
     # Plot the "true" values
     fig, ax = plt.subplots()
-    ax.step(x=ages[1:], y=masses_input / M_tot, label=f"Cumulative mass", where="mid", linewidth=2.5, color="blue")
+    ax.step(x=ages[1:], y=masses_input - np.log10(M_tot), label=f"Cumulative mass", where="mid", linewidth=2.5, color="blue")
 
     # Plot 
-    ax.step(x=ages[1:], y=masses_regul / M_tot, label=f"Cumulative mass (regularised)", where="mid", color="indigo")
-    ax.step(x=ages[1:], y=masses_MC / M_tot, label=f"Cumulative mass (MC)", where="mid", color="cornflowerblue")
+    ax.step(x=ages[1:], y=masses_regul - np.log10(M_tot), label=f"Cumulative mass (regularised)", where="mid", color="indigo")
+    ax.step(x=ages[1:], y=masses_MC - np.log10(M_tot), label=f"Cumulative mass (MC)", where="mid", color="cornflowerblue")
 
     # Decorations    
-    ax.axhline(1e-4, color="k", ls="--", linewidth=1)
+    ax.axhline(-4, color="k", ls="--", linewidth=1)
     ax.set_xscale("log")
-    ax.set_yscale("log")
+    # ax.set_yscale("log")
     ax.legend(loc="upper left", fontsize="x-small")
     ax.set_xlabel("Age (yr)")
-    ax.set_ylabel("Cumulative mass fraction")
+    ax.set_ylabel("Cumulative mass fraction (log)")
     ax.set_xlim([ages[0], ages[-1]])
     ax.grid()
 

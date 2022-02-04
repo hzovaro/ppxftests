@@ -13,7 +13,38 @@
 import matplotlib.pyplot as plt
 import numpy as np
 from IPython.core.debugger import Tracer
+
+from ppxftests.ssputils import load_ssp_templates
+
 import matplotlib
+
+###############################################################################
+def plot_1D_sfh_mass_weighted(sfh_mass_weighted, ages, metallicities, 
+                              ax=None):
+    """
+    A handy function for making a nice plot of the SFH.
+    """
+    assert sfh_mass_weighted.shape[1] == len(ages),\
+        "The first dimension of sfh_mass_weighted must be equal to the number of ages!"
+    assert sfh_mass_weighted.shape[0] == len(metallicities),\
+        "The zeroth dimension of sfh_mass_weighted must be equal to the number of metallicities!"
+
+    # Create figure
+    if ax is None:
+        # fig, ax = plt.subplots(nrows=1, ncols=1, figsize=(10, 3.5))
+        fig = plt.figure(figsize=(10, 3.5))
+        ax = fig.add_axes([0.1, 0.25, 0.8, 0.65])
+    
+    # Plot the SFH
+    sfh_1D_mass_weighted = np.nansum(sfh_mass_weighted, axis=0)
+    ax.step(ages, sfh_1D_mass_weighted, where="mid")   
+
+    # Decorations
+    ax.set_ylabel(r"Stellar mass ($\rm M_\odot$)")
+    ax.set_xlabel("Age (yr)")
+    # ax.set_xticklabels(["{:}".format(age / 1e6) for age in ages], rotation="vertical", fontsize="x-small")
+    
+    return
 
 ###############################################################################
 def plot_sfh_mass_weighted(sfh_mass_weighted, ages, metallicities, 
@@ -125,7 +156,6 @@ def plot_sfr(sfr_mean, ages, metallicities,
     
     return
 
-
 ###############################################################################
 def ppxf_plot(pp, ax=None):
     """
@@ -164,7 +194,7 @@ def ppxf_plot(pp, ax=None):
     for k in pp.goodpixels[[0, -1]]:
         ax.plot(x[[k, k]], [mn, pp.bestfit[k]], 'lightgray')
 
-    if pp.gas_any:
+    if pp.gas_any or pp.sky is not None:
         if pp.sky is None:
             stars_spectrum = pp.bestfit - pp.gas_bestfit
             ymin = mn
@@ -180,12 +210,10 @@ def ppxf_plot(pp, ax=None):
                     label='Input spectrum - sky')
             ymin = min(np.nanmin(
                 pp.galaxy[pp.goodpixels] - sky_spectrum[pp.goodpixels]), np.nanmin(stars_spectrum))
-        ax.plot(x, pp.gas_bestfit + mn, c='magenta',
-                linewidth=2, label='Best fit (gas)')
-        ax.plot(x, pp.bestfit, c='orange',
-                linewidth=2, label='Best fit (total)')
-        ax.plot(x, stars_spectrum, 'r', linewidth=2,
-                label='Best fit (stellar)')
+        if pp.gas_any:
+            ax.plot(x, pp.gas_bestfit + mn, c='magenta', linewidth=2, label='Best fit (gas)')
+        ax.plot(x, pp.bestfit, c='orange', linewidth=2, label='Best fit (total)')
+        ax.plot(x, stars_spectrum, 'r', linewidth=2, label='Best fit (stellar)')
 
     else:
         ax.plot(x, pp.bestfit, 'r', linewidth=2, label='Best fit')
@@ -205,3 +233,5 @@ def ppxf_plot(pp, ax=None):
     ax.set_ylim([ymin, ymax] + np.array([-0.05, 0.05]) * (ymax - ymin))
 
     ax.legend(loc='upper left', numpoints=1)
+
+
