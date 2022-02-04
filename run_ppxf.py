@@ -191,7 +191,7 @@ def ppxf_helper(args):
         velscale, start_kin, good_px, nmoments, adegree,\
         mdegree, dv, lambda_vals_log, regul, reddening, reddening_calzetti00,\
         reg_dim, kinematic_components, gas_component, gas_names,\
-        gas_reddening, sky = args
+        gas_reddening = args
 
     # Run ppxf
     pp_age_met = ppxf(templates=templates,
@@ -206,7 +206,6 @@ def ppxf_helper(args):
           reg_dim=reg_dim,
           component=kinematic_components, gas_component=gas_component,
           gas_names=gas_names, gas_reddening=gas_reddening, method="capfit",
-          sky=sky,
           quiet=True)
 
     # Return
@@ -217,7 +216,7 @@ def ppxf_helper(args):
 ##############################################################################
 def run_ppxf(spec, spec_err, lambda_vals_A, z, 
              isochrones, metals_to_use=None,
-             fit_agn_cont=False, alpha_nu_vals=[0.5, 1.0, 1.5, 2.0, 2.5],
+             fit_agn_cont=False, alpha_nu_vals=[0.5, 1.0, 1.5, 2.0],
              fit_gas=True, ngascomponents=0, tie_balmer=True,
              mdegree=4, adegree=-1, reddening=None,
              FWHM_inst_A=FWHM_WIFES_INST_A,
@@ -376,9 +375,15 @@ def run_ppxf(spec, spec_err, lambda_vals_A, z,
                     f"Metallicity {m} for the {isochrones} isochrones not found!"
 
     # pPXF parameters
-    ncomponents = ngascomponents + 1 if fit_gas else 1    # number of kinematic components. 2 = stars + gas; 3 = stars + 2 * gas
-    nmoments = [2 for i in range(ncomponents)]
-    start_kin = [[vel, 100.] for i in range(ncomponents)] if fit_gas else [vel, 100.]
+    ncomponents = 1
+    start_kin = [[vel, 100.]]
+    nmoments = [2]
+    if fit_gas:
+        ncomponents += ngascomponents
+        start_kin += [[vel, 100]] * ngascomponents
+        nmoments += [2] * ngascomponents
+
+
     limit_doublets = False
 
     ##############################################################################
@@ -388,32 +393,13 @@ def run_ppxf(spec, spec_err, lambda_vals_A, z,
         log_rebin_and_convolve_stellar_templates(isochrones, metals_to_use, 
                                                  FWHM_inst_A=FWHM_WIFES_INST_A, 
                                                  velscale=velscale)
-    
-    print("HACKYYYYYYYY DONT FORGET TO DELETE!!!!")
-    n_agn_templates = 1
-    agn_templates = np.ones((lambda_vals_ssp_log.shape[0], n_agn_templates))
-    stellar_templates_log = np.column_stack([stellar_templates_log, agn_templates])
-    print("HACKYYYYYYYY DONT FORGET TO DELETE!!!!")
-
-    if fit_agn_cont:
-        # Add power-law templates to replicate an AGN continuum
-        # To use the "sky" argument these need to be evaluated at the 
-        # wavelength grid of the input (linearly spaced) spectrum
-        agn_templates = np.zeros((len(lambda_vals_A), len(alpha_nu_vals)))
-        for aa, alpha_nu in enumerate(alpha_nu_vals):
-            alpha_lambda = 2 - alpha_nu
-            F_lambda_0 = 1 / (lambda_norm_A**(-alpha_lambda))
-            F_lambda = F_lambda_0 * lambda_vals_A**(-alpha_lambda)
-            agn_templates[:, aa] = F_lambda
-        sky = agn_templates
-    else:
-        sky = None
+    # Number of SSP templates
+    n_ssp_templates = stellar_templates_log.shape[1]
 
     # Regularisation dimensions
     N_metallicities = len(metallicities)
     N_ages = len(ages)
-    if reg_dim is None:
-        reg_dim = (N_metallicities, N_ages)
+    reg_dim = (N_metallicities, N_ages)
 
     # Normalise
     lambda_norm_idx = np.nanargmin(np.abs(np.exp(lambda_vals_ssp_log) - lambda_norm_A))
@@ -421,16 +407,36 @@ def run_ppxf(spec, spec_err, lambda_vals_A, z,
     stellar_templates_log /= stellar_template_norms
 
     # Reshape
-    print("HACKYYYYYYYY DONT FORGET TO DELETE!!!!")
-    stellar_template_norms = np.reshape(stellar_template_norms[:-n_agn_templates], (N_metallicities, N_ages))
-    print("HACKYYYYYYYY DONT FORGET TO DELETE!!!!")
+    stellar_template_norms = np.reshape(stellar_template_norms, (N_metallicities, N_ages))
 
     # This line only works if velscale_ratio = 1
     dv = (lambda_vals_ssp_log[0] - lambda_vals_log[0]) * constants.c / 1e3  # km/s
 
     ##############################################################################
-    # Merge templates so they can be input to pPXF
+    # AGN templates
     ##############################################################################
+    if fit_agn_cont:
+        # Add power-law templates to replicate an AGN continuum
+        n_agn_templates = len(alpha_nu_vals)
+        agn_templates = np.zeros((len(lambda_vals_ssp_log), n_agn_templates))
+        for aa, alpha_nu in enumerate(alpha_nu_vals):
+            alpha_lambda = 2 - alpha_nu
+            F_lambda_0 = 1 / (lambda_norm_A**(-alpha_lambda))
+            F_lambda = F_lambda_0 * np.exp(lambda_vals_ssp_log)**(-alpha_lambda)
+            agn_templates[:, aa] = F_lambda
+        stellar_templates_log = np.column_stack([stellar_templates_log, agn_templates])
+    else:
+        n_agn_templates = 0
+
+    n_ssp_and_agn_templates = stellar_templates_log.shape[1]
+
+    ##############################################################################
+    # Kinematic parameters, plus gas templates
+    ##############################################################################
+    cc = 0  # Component number
+    kinematic_components = [cc] * n_ssp_and_agn_templates
+    cc += 1
+
     if fit_gas:
         ##############################################################################
         # Gas templates
@@ -445,23 +451,15 @@ def run_ppxf(spec, spec_err, lambda_vals_A, z,
             limit_doublets=limit_doublets,
             vacuum=False
         )
-        # Combines the stellar and gaseous stars_templates into a single array.
-        # During the PPXF fit they will be assigned a different kinematic
-        # COMPONENT value
-        n_ssp_templates = stellar_templates_log.shape[1]
+        
         # forbidden lines contain "[*]"
         n_forbidden_lines = np.sum(["[" in a for a in gas_names])
         n_balmer_lines = len(gas_names) - n_forbidden_lines
 
         # Here, we lump together the Balmer + forbidden lines into a single kinematic component
-        if ncomponents == 3:
-            kinematic_components = [0] * n_ssp_templates + \
-                [1] * len(gas_names) + [2] * len(gas_names)
-        elif ncomponents == 4:
-            kinematic_components = [0] * n_ssp_templates + \
-                [1] * len(gas_names) + [2] * len(gas_names) + [3] * len(gas_names)
-        elif ncomponents == 2:
-            kinematic_components = [0] * n_ssp_templates + [1] * len(gas_names)
+        for ii in range(ngascomponents):
+            kinematic_components += [cc] * len(gas_names)
+            cc += 1
 
         # If the Balmer lines are tied one should allow for gas reddeining.
         # The gas_reddening can be different from the stellar one, if both are fitted.
@@ -470,44 +468,39 @@ def run_ppxf(spec, spec_err, lambda_vals_A, z,
         # Combines the stellar and gaseous stellar_templates_log into a single array.
         # During the PPXF fit they will be assigned a different kinematic
         # COMPONENT value
-        if ncomponents > 2:
-            if ngascomponents == 2:
-                gas_templates = np.concatenate((gas_templates, gas_templates), axis=1)
-                gas_names = np.concatenate((gas_names, gas_names))
-            if ngascomponents == 3:
-                gas_templates = np.concatenate((gas_templates, gas_templates, gas_templates), axis=1)
-                gas_names = np.concatenate((gas_names, gas_names, gas_names))
-            eline_lambdas = np.concatenate((eline_lambdas, eline_lambdas))
+        if ngascomponents >= 2:
+            gas_templates = np.concatenate(tuple(gas_templates for ii in range(ngascomponents)), axis=1)
+            gas_names = np.concatenate(tuple(gas_names for ii in range(ngascomponents)))
 
         gas_names_new = []
         for ii in range(len(gas_names)):
-            gas_names_new.append(f"{gas_names[ii]} (component {kinematic_components[ii + n_ssp_templates]})")
+            gas_names_new.append(f"{gas_names[ii]} (component {kinematic_components[ii + n_ssp_and_agn_templates]})")
         gas_names = gas_names_new
         templates = np.column_stack([stellar_templates_log, gas_templates])
 
-        # gas_component=True for gas templates
+        # Determine which templates are gas ones
         gas_component = np.array(kinematic_components) > 0
 
     # Case: no gas templates
     else:
-        n_ssp_templates = stellar_templates_log.shape[1]
-        kinematic_components = [0] * n_ssp_templates
         gas_names = None 
         templates = stellar_templates_log
         gas_reddening = None
-        gas_component = None
+        gas_component = None 
 
     ##########################################################################
     # Mass-weighted weights
     ##########################################################################
     def compute_mass_weights(pp):
         # Reshape the normalisation factors into the same shape as the ppxf weights
-        if pp.sky is not None:
-            weights_light_weighted_normed = pp.weights[:pp.ntemp]
+        weights_light_weighted_normed = pp.weights
+
+        if fit_agn_cont:
+            weights_light_weighted_normed = np.reshape(
+                weights_light_weighted_normed[~pp.gas_component][:-n_agn_templates], (N_metallicities, N_ages))
         else:
-            weights_light_weighted_normed = pp.weights
-        weights_light_weighted_normed = np.reshape(
-            weights_light_weighted_normed[~pp.gas_component][:-n_agn_templates], (N_metallicities, N_ages))
+            weights_light_weighted_normed = np.reshape(
+                weights_light_weighted_normed[~pp.gas_component], (N_metallicities, N_ages))
 
         # Convert the light-weighted ages into mass-weighted ages
         weights_mass_weighted = weights_light_weighted_normed * norm / stellar_template_norms
@@ -521,12 +514,14 @@ def run_ppxf(spec, spec_err, lambda_vals_A, z,
         # Reshape the normalisation factors into the same shape as the ppxf weights
         # Un-normalise the weights so that they are in units of Msun/(erg/s/Å) 
         # at the normalisation wavelength (by default 4020 Å)
-        if pp.sky is not None:
-            weights_light_weighted = pp.weights[:pp.ntemp] * norm
+        weights_light_weighted = pp.weights * norm
+
+        if fit_agn_cont:
+            weights_light_weighted = np.reshape(
+                weights_light_weighted[~pp.gas_component][:-n_agn_templates], (N_metallicities, N_ages))
         else:
-            weights_light_weighted = pp.weights * norm
-        weights_light_weighted = np.reshape(
-            weights_light_weighted[~pp.gas_component][:-n_agn_templates], (N_metallicities, N_ages))
+            weights_light_weighted = np.reshape(
+                weights_light_weighted[~pp.gas_component], (N_metallicities, N_ages))
 
         return weights_light_weighted
 
@@ -587,7 +582,6 @@ def run_ppxf(spec, spec_err, lambda_vals_A, z,
                   vsyst=dv,
                   lam=np.exp(lambda_vals_log),
                   regul=0,
-                  sky=sky,
                   reddening=reddening, reddening_func=reddening_calzetti00,
                   reg_dim=reg_dim,
                   component=kinematic_components, gas_component=gas_component,
@@ -605,7 +599,6 @@ def run_ppxf(spec, spec_err, lambda_vals_A, z,
                           vsyst=dv,
                           lam=np.exp(lambda_vals_log),
                           regul=0,
-                          sky=sky,
                           reddening=reddening, reddening_func=reddening_calzetti00,
                           reg_dim=reg_dim,
                           component=kinematic_components, gas_component=gas_component,
@@ -669,7 +662,6 @@ def run_ppxf(spec, spec_err, lambda_vals_A, z,
                               vsyst=dv,
                               lam=np.exp(lambda_vals_log),
                               regul=regul_fixed,
-                              sky=sky,
                               reddening=reddening, reddening_func=reddening_calzetti00,
                               reg_dim=reg_dim,
                               component=kinematic_components, gas_component=gas_component,
@@ -705,7 +697,6 @@ def run_ppxf(spec, spec_err, lambda_vals_A, z,
                                   vsyst=dv,
                                   lam=np.exp(lambda_vals_log),
                                   regul=regul,
-                                  sky=sky,
                                   reddening=reddening, reddening_func=reddening_calzetti00,
                                   reg_dim=reg_dim,
                                   component=kinematic_components, gas_component=gas_component,
@@ -792,7 +783,7 @@ def run_ppxf(spec, spec_err, lambda_vals_A, z,
                     velscale, start_kin, good_px, nmoments, adegree,
                     mdegree, dv, lambda_vals_log, regul, reddening, reddening_calzetti00,
                     reg_dim, kinematic_components, gas_component, gas_names,
-                    gas_reddening, sky
+                    gas_reddening
                 ] for regul in regul_vals
             ]
 
@@ -919,7 +910,7 @@ def run_ppxf(spec, spec_err, lambda_vals_A, z,
                         velscale, start_kin, good_px, nmoments, adegree,
                         mdegree, dv, lambda_vals_log, regul, reddening, reddening_calzetti00,
                         reg_dim, kinematic_components, gas_component, gas_names,
-                        gas_reddening, sky
+                        gas_reddening
                     ] for regul in regul_vals
                 ]
 
@@ -1036,12 +1027,11 @@ def run_ppxf(spec, spec_err, lambda_vals_A, z,
     if fit_agn_cont:
         pp.alpha_nu_vals = alpha_nu_vals
         pp.fit_agn_cont = True
-        pp.weights_agn = pp.weights[pp.ntemp:] 
-        nsky = pp.sky.shape[1]
-        if nsky == 1:
-            pp.agn_bestfit = np.squeeze(pp.sky) * pp.weights[-nsky:]
+        pp.weights_agn = pp.weights[-n_agn_templates:] 
+        if n_agn_templates == 1:
+            pp.agn_bestfit = np.squeeze(pp.templates[-n_agn_templates:]) * pp.weights[-n_agn_templates:]
         else:
-            pp.agn_bestfit = np.sum(pp.sky * pp.weights[-nsky:], axis=1)
+            pp.agn_bestfit = np.sum(pp.templates[-n_agn_templates:] * pp.weights[-n_agn_templates:, None], axis=1)
     else:
         pp.alpha_nu_vals = None 
         pp.fit_agn_cont = False
