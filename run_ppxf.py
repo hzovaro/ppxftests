@@ -376,15 +376,14 @@ def run_ppxf(spec, spec_err, lambda_vals_A, z,
 
     # pPXF parameters
     ncomponents = 1
-    start_kin = [[vel, 100.]]
+    start_kin = [vel, 100.]
     nmoments = [2]
     if fit_gas:
         ncomponents += ngascomponents
+        start_kin = [start_kin]
         start_kin += [[vel, 100]] * ngascomponents
         nmoments += [2] * ngascomponents
-
-
-    limit_doublets = False
+    limit_doublets = True
 
     ##############################################################################
     # SSP templates
@@ -487,6 +486,8 @@ def run_ppxf(spec, spec_err, lambda_vals_A, z,
         templates = stellar_templates_log
         gas_reddening = None
         gas_component = None 
+
+    Tracer()()
 
     ##########################################################################
     # Mass-weighted weights
