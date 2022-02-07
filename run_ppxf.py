@@ -345,7 +345,7 @@ def run_ppxf(spec, spec_err, lambda_vals_A, z,
     good_px = np.squeeze(np.argwhere(~bad_px_mask))
 
     # Normalize spectrum to avoid numerical issues
-    lambda_norm_idx = np.nanargmin(np.abs(np.exp(lambda_vals_log) - lambda_norm_A))
+    lambda_norm_idx = np.nanargmin(np.abs(np.exp(lambda_vals_log) / (1 + z) - lambda_norm_A))
     norm = spec_log[lambda_norm_idx]
     spec_err_log /= norm
     spec_log /= norm    
@@ -487,8 +487,6 @@ def run_ppxf(spec, spec_err, lambda_vals_A, z,
         gas_reddening = None
         gas_component = None 
 
-    Tracer()()
-
     ##########################################################################
     # Mass-weighted weights
     ##########################################################################
@@ -625,28 +623,6 @@ def run_ppxf(spec, spec_err, lambda_vals_A, z,
             if savefigs:
                 pdfpages_spec.savefig(fig, bbox_inches="tight")
 
-            # # SFH change 
-            # fig_sfh, axs_sfh = plt.subplots(nrows=2, ncols=1, figsize=(15, 10))
-            # fig_sfh.subplots_adjust(hspace=0)
-            # fig_sfh.suptitle(f"First ppxf iteration: regul = 0")
-            # axs_sfh[0].step(x=range(len(w)), y=w, where="mid", label=f"Iteration 0")
-            # axs_sfh[0].set_xlabel("Template age")
-            # axs_sfh[0].set_ylabel(r"$\log_{10} (M_* [\rm M_\odot])$")
-            # axs_sfh[0].set_yscale("log")
-            # axs_sfh[0].set_ylim([10^0, None])
-            # axs_sfh[0].autoscale(axis="x", enable=True, tight=True)
-            # axs_sfh[0].grid()
-            # axs_sfh[0].legend()
-
-            # axs_sfh[1].axhline(0, color="gray")
-            # axs_sfh[1].set_xticks(range(len(ages)))
-            # axs_sfh[1].set_xticklabels([f"{age / 1e6}" for age in ages], rotation="vertical")
-            # axs_sfh[1].autoscale(axis="x", enable=True, tight=True)
-            # axs_sfh[1].grid()
-            # fig_sfh.canvas.draw()
-            # if savefigs:
-            #     pdfpages_sfh.savefig(fig_sfh, bbox_inches="tight")
-
             if matplotlib.get_backend() != "agg" and interactive_mode:
                 hit_key_to_continue()
 
@@ -727,29 +703,6 @@ def run_ppxf(spec, spec_err, lambda_vals_A, z,
                     fig.suptitle(f"Manually determining regul parameter: regul = {regul:.2f} (iteration {cnt})")
                     if savefigs:
                         pdfpages_spec.savefig(fig, bbox_inches="tight")
-
-                    # Plot the updated SFH
-                    fig_sfh.suptitle(f"Manually determining regul parameter: regul = {regul:.2f} (iteration {cnt})")
-                    axs_sfh[0].step(x=range(len(w)), y=w, where="mid", label=f"Iteration {cnt}")
-                    axs_sfh[0].set_ylim([10^0, None])
-                    axs_sfh[0].autoscale(axis="x", enable=True, tight=True)
-                    axs_sfh[0].grid()
-                    axs_sfh[0].legend()
-
-                    # Plot the difference in the SFH from the previous iteration
-                    axs_sfh[1].clear()
-                    axs_sfh[1].plot(range(len(w)), dw, "ko")
-                    axs_sfh[1].set_yscale("log")
-                    axs_sfh[1].set_ylabel("Percentage change from previous best fit")
-                    axs_sfh[1].axhline(0, color="gray")
-                    axs_sfh[1].set_xticks(range(len(ages)))
-                    axs_sfh[1].set_xticklabels(["{:}".format(age / 1e6) for age in ages], rotation="vertical")
-                    axs_sfh[1].text(s=f"Absolute mass difference: {delta_m:.2g} $M_\odot$", x=0.1, y=0.9, transform=axs_sfh[1].transAxes)
-                    axs_sfh[1].autoscale(axis="x", enable=True, tight=True)
-                    axs_sfh[1].grid()
-                    fig_sfh.canvas.draw()
-                    if savefigs:
-                        pdfpages_sfh.savefig(fig_sfh, bbox_inches="tight")
 
                 while True:
                     key = input("Enter a new regul value, otherwise press enter: ")
@@ -838,29 +791,6 @@ def run_ppxf(spec, spec_err, lambda_vals_A, z,
                 fig_regul.canvas.draw()
                 if savefigs:
                     pdfpages_regul.savefig(fig_regul, bbox_inches="tight")
-
-                # Plot the updated SFH
-                fig_sfh.suptitle(f"SFH evolution: regul = {regul_vals[opt_idx]:.2f}, " + r"$\Delta \chi_{\rm goal} - \Delta \chi$ =" + f"{obj_vals[opt_idx]:.2f} (iteration {1})")
-                axs_sfh[0].step(x=range(len(w)), y=w, where="mid", label=f"Iteration 1")
-                axs_sfh[0].set_ylim([10^0, None])
-                axs_sfh[0].autoscale(axis="x", enable=True, tight=True)
-                axs_sfh[0].grid()
-                axs_sfh[0].legend()
-
-                # Plot the difference in the SFH from the previous iteration
-                axs_sfh[1].clear()
-                axs_sfh[1].plot(range(len(w)), dw, "ko")
-                axs_sfh[1].set_yscale("log")
-                axs_sfh[1].set_ylabel("Percentage change from previous best fit")
-                axs_sfh[1].axhline(0, color="gray")
-                axs_sfh[1].set_xticks(range(len(ages)))
-                axs_sfh[1].set_xticklabels(["{:}".format(age / 1e6) for age in ages], rotation="vertical")
-                axs_sfh[1].text(s=f"Absolute mass difference: {delta_m:.2g} $M_\odot$", x=0.1, y=0.9, transform=axs_sfh[1].transAxes)
-                axs_sfh[1].autoscale(axis="x", enable=True, tight=True)
-                axs_sfh[1].grid()
-                fig_sfh.canvas.draw()
-                if savefigs:
-                    pdfpages_sfh.savefig(fig_sfh, bbox_inches="tight")
 
                 if matplotlib.get_backend() != "agg" and interactive_mode:
                     hit_key_to_continue()
@@ -964,29 +894,6 @@ def run_ppxf(spec, spec_err, lambda_vals_A, z,
                     ax_regul.set_ylabel(r"$\Delta\chi_{\rm goal}^2 - \Delta\chi^2$")
                     ax_regul.legend()
 
-                    # Plot the updated SFH
-                    axs_sfh[0].step(x=range(len(w)), y=w, where="mid", label=f"Iteration {cnt}")
-                    axs_sfh[0].set_ylim([10^0, None])
-                    axs_sfh[0].autoscale(axis="x", enable=True, tight=True)
-                    axs_sfh[0].grid()
-                    axs_sfh[0].legend()
-
-                    # Plot the difference in the SFH from the previous iteration
-                    fig_sfh.suptitle(f"SFH evolution: regul = {regul_vals[opt_idx]:.2f}, " + r"$\Delta \chi_{\rm goal} - \Delta \chi$ =" + f"{obj_vals[opt_idx]:.2f} (iteration {cnt})")
-                    axs_sfh[1].clear()
-                    axs_sfh[1].plot(range(len(w)), dw, "ko")
-                    axs_sfh[1].set_yscale("log")
-                    axs_sfh[1].set_ylabel("Percentage change from previous best fit")
-                    axs_sfh[1].axhline(0, color="gray")
-                    axs_sfh[1].set_xticks(range(len(ages)))
-                    axs_sfh[1].set_xticklabels(["{:}".format(age / 1e6) for age in ages], rotation="vertical")
-                    axs_sfh[1].text(s=f"Absolute mass difference: {delta_m:.2g} $M_\odot$", x=0.1, y=0.9, transform=axs_sfh[1].transAxes)
-                    axs_sfh[1].autoscale(axis="x", enable=True, tight=True)
-                    axs_sfh[1].grid()
-                    fig_sfh.canvas.draw()
-                    if savefigs:
-                        pdfpages_sfh.savefig(fig_sfh, bbox_inches="tight")
-
                     if savefigs:
                         pdfpages_regul.savefig(fig_regul, bbox_inches="tight")
 
@@ -1028,11 +935,12 @@ def run_ppxf(spec, spec_err, lambda_vals_A, z,
     if fit_agn_cont:
         pp.alpha_nu_vals = alpha_nu_vals
         pp.fit_agn_cont = True
-        pp.weights_agn = pp.weights[-n_agn_templates:] 
+        pp.weights_agn = pp.weights[~pp.gas_component][-n_agn_templates:] 
+        # NOTE: agn_bestfit is on the wavelength grid of the logarithmically rebinned SSP templates - NOT the "galaxy" wavelength grid
         if n_agn_templates == 1:
-            pp.agn_bestfit = np.squeeze(pp.templates[-n_agn_templates:]) * pp.weights[-n_agn_templates:]
+            pp.agn_bestfit = np.squeeze(pp.templates[:, -n_agn_templates:]) * pp.weights[None, -n_agn_templates:]
         else:
-            pp.agn_bestfit = np.sum(pp.templates[-n_agn_templates:] * pp.weights[-n_agn_templates:, None], axis=1)
+            pp.agn_bestfit = np.sum(pp.templates[:, -n_agn_templates:] * pp.weights[None, -n_agn_templates:], axis=1)
     else:
         pp.alpha_nu_vals = None 
         pp.fit_agn_cont = False
