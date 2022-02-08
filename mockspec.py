@@ -376,7 +376,7 @@ def create_mock_spectrum(sfh_mass_weighted, isochrones, sigma_star_kms, z, SNR,
     ###########################################################################
     # 4d. Apply extinction
     if A_V > 0:
-        R_V = 3.1
+        R_V = 4.05  # For the Calzetti+2000 extinction curve
         A_vals = extinction.calzetti00(wave=np.exp(lambda_vals_ssp_log), a_v=A_V, r_v=R_V, unit="aa")
         spec_log_conv_prev = np.copy(spec_log_conv)
         spec_log_conv *= 10**(-0.4 * A_vals)
@@ -384,7 +384,7 @@ def create_mock_spectrum(sfh_mass_weighted, isochrones, sigma_star_kms, z, SNR,
         if plotit:
             fig, axs = plt.subplots(nrows=2, ncols=1, figsize=(fig_w, 2 * fig_h))
             axs[0].plot(np.exp(lambda_vals_ssp_log), spec_log_conv_prev, color="black", alpha=0.5, label="Before extinction")
-            axs[0].plot(np.exp(lambda_vals_ssp_log), spec_log, color="black", label="After extinction")
+            axs[0].plot(np.exp(lambda_vals_ssp_log), spec_log_conv, color="black", label="After extinction")
             axs[0].set_ylabel(f"$L$ (erg/s/$\AA$)")
             axs[0].set_xlabel(f"$\lambda$")
             axs[0].legend()

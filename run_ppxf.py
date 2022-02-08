@@ -68,7 +68,8 @@ def reddening_fm07(lam, ebv):
     # Need to derive A(lambda) from E(B-V)
     # fm07 takes as input lambda and A_V, so we first need to convert E(B-V)
     # into A_V
-    A_V = 3.1 * ebv
+    R_V = 3.1
+    A_V = R_V * ebv
     A_lambda = extinction.fm07(wave=lam, a_v=A_V, unit='aa')
     fact = 10**(-0.4 * A_lambda)  # Need a minus sign here!
     return fact
@@ -78,7 +79,7 @@ def reddening_calzetti00(lam, ebv):
     # Need to derive A(lambda) from E(B-V)
     # calzetti00 takes as input lambda and A_V, so we first need to convert E(B-V)
     # into A_V
-    R_V = 3.1
+    R_V = 4.05
     A_V = R_V * ebv
     A_lambda = extinction.calzetti00(wave=lam, a_v=A_V, r_v=R_V, unit='aa')
     fact = 10**(-0.4 * A_lambda)  # Need a minus sign here!
