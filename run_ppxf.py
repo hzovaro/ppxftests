@@ -936,16 +936,13 @@ def run_ppxf(spec, spec_err, lambda_vals_A, z,
         pp.alpha_nu_vals = alpha_nu_vals
         pp.fit_agn_cont = True
         pp.weights_agn = pp.weights[~pp.gas_component][-n_agn_templates:] 
-        # NOTE: agn_bestfit is on the wavelength grid of the logarithmically rebinned SSP templates - NOT the "galaxy" wavelength grid
-        if n_agn_templates == 1:
-            pp.agn_bestfit = np.squeeze(pp.templates[:, -n_agn_templates:]) * pp.weights[None, -n_agn_templates:]
-        else:
-            pp.agn_bestfit = np.sum(pp.templates[:, -n_agn_templates:] * pp.weights[None, -n_agn_templates:], axis=1)
+        pp.weights_stellar = pp.weights[~pp.gas_component][:-n_agn_templates] 
     else:
         pp.alpha_nu_vals = None 
         pp.fit_agn_cont = False
         pp.weights_agn = None
         pp.agn_bestfit = None
+        pp.weights_stellar = pp.weights[~pp.gas_component]
 
     ##########################################################################
     # Plotting the fit
@@ -957,8 +954,8 @@ def run_ppxf(spec, spec_err, lambda_vals_A, z,
             regul_final = regul_vals[opt_idx]
         elif regularisation_method == "fixed":
             regul_final = regul_fixed
-        else:
-            regul_final = regul
+        elif regularisation_method == "none":
+            regul_final = 0
         fig.suptitle(f"Best fit (regul = {regul_final:.2f})")
         if savefigs:
             pdfpages_spec.savefig(fig, bbox_inches="tight")
