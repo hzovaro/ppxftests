@@ -285,7 +285,7 @@ def create_mock_spectrum(sfh_mass_weighted, isochrones, sigma_star_kms, z, SNR,
                                                                 units='km/s')
 
                     # Define a Gaussian
-                    line = A * np.exp( -(np.exp(lambda_vals_ssp_log) - lambda_gas_A)**2 / (2 * sigma_gas_A))
+                    line = A * np.exp( -(np.exp(lambda_vals_ssp_log) - lambda_gas_A)**2 / (2 * sigma_gas_A**2))
 
                     # Add to spectrum
                     spec_log_lines += line
