@@ -173,7 +173,7 @@ def create_mock_spectrum(sfh_mass_weighted, isochrones, sigma_star_kms, z, SNR,
     ###########################################################################
     # Some settings for plotting
     fig_w = 12
-    fig_h = 5
+    fig_h = 3.5
 
     # 1. Sum the templates by their weights to create a single spectrum
     spec_linear = np.nansum(np.nansum(sfh_mass_weighted[None, :, :] * stellar_templates_linear, axis=1), axis=1)
@@ -185,10 +185,9 @@ def create_mock_spectrum(sfh_mass_weighted, isochrones, sigma_star_kms, z, SNR,
         for mm, aa in product(range(N_metallicities), range(N_ages)):
             w = sfh_mass_weighted[mm, aa]
             if w > 0:
-                ax.plot(lambda_vals_ssp_linear, stellar_templates_linear[:, mm, aa] * w, 
-                        alpha=0.5, label=f"t = {ages[aa] / 1e6:.2f} Myr, m = {metallicities[mm]:.4f}, w = {w:g}")
-        ax.set_ylabel(f"$L$ (erg/s/$\AA$)")
-        ax.set_xlabel(f"$\lambda$")
+                ax.plot(lambda_vals_ssp_linear, stellar_templates_linear[:, mm, aa] * w, alpha=0.5, color="grey")
+        ax.set_ylabel(r"$L \,\rm (erg\,s^{-1}\,\AA^{-1}$)")
+        ax.set_xlabel(r"Rest-frame wavelength ($\rm \AA$)")
         lines = [Line2D([0], [0], color="black", alpha=1.0),
                  Line2D([0], [0], color="black", alpha=0.5)]
         labels = ["Total spectrum", "Individual templates"]
@@ -225,13 +224,31 @@ def create_mock_spectrum(sfh_mass_weighted, isochrones, sigma_star_kms, z, SNR,
     # 4a. Convolve the LOSVD kernel with the mock spectrum
     spec_log_conv = convolve(spec_log, kernel_losvd, mode="same") / np.nansum(kernel_losvd)
 
+    if plotit:
+        fig, ax = plt.subplots(nrows=1, ncols=1, figsize=(fig_w, fig_h))
+        ax.plot(np.exp(lambda_vals_ssp_log), spec_log, color="grey", label="Before convolution with LOSVD")
+        ax.plot(np.exp(lambda_vals_ssp_log), spec_log_conv, color="black", label="After convolution with LOSVD")
+        ax.set_ylabel(r"$L \,\rm (erg\,s^{-1}\,\AA^{-1}$)")
+        ax.set_xlabel(r"Rest-frame wavelength ($\rm \AA$)")
+        ax.legend()
+        ax.set_ylim([0, None])
+        ax.autoscale(enable="True", axis="x", tight=True)
+
+        # Add an extra axis 
+        ax_inset = fig.add_axes([0.4, 0.25, 0.2, 0.35])
+        pts = (np.exp(lambda_vals_ssp_log) > 6562.8 - 50) & (np.exp(lambda_vals_ssp_log) < 6562.8 + 50)
+        ax_inset.plot(np.exp(lambda_vals_ssp_log)[pts], spec_log[pts], color="grey", label="Before convolution with LOSVD")
+        ax_inset.plot(np.exp(lambda_vals_ssp_log)[pts], spec_log_conv[pts], color="black", label="After convolution with LOSVD")
+        ax_inset.autoscale(enable="True", axis="x", tight=True)
+        ax_inset.set_ylabel(r"$L \,\rm (erg\,s^{-1}\,\AA^{-1}$)")
+        ax_inset.set_xlabel(r"Rest-frame wavelength ($\rm \AA$)", labelpad=-3)
+
     ###########################################################################
     # 4b. Add emission lines, if needed
     if ngascomponents > 0:
         spec_log_lines = np.zeros(spec_log_conv.shape)
         if plotit:
             fig, ax = plt.subplots(nrows=1, ncols=1, figsize=(fig_w, fig_h))
-            ax.plot(np.exp(lambda_vals_ssp_log), spec_log_conv, color="orange", label="Stellar continuum only")
  
         eline_lambdas_A = {
             "NeV3347": 3346.79,
@@ -331,8 +348,8 @@ def create_mock_spectrum(sfh_mass_weighted, isochrones, sigma_star_kms, z, SNR,
             ax.plot(np.exp(lambda_vals_ssp_log), spec_log_lines, color="green", label="Emission lines")
             ax.plot(np.exp(lambda_vals_ssp_log), spec_log_conv_prev, color="black", alpha=0.5, label="Without emission lines")
             ax.plot(np.exp(lambda_vals_ssp_log), spec_log_conv, color="black", label="With emission lines")
-            ax.set_ylabel(f"$L$ (erg/s/$\AA$)")
-            ax.set_xlabel(f"$\lambda$")
+            ax.set_ylabel(r"$L \,\rm (erg\,s^{-1}\,\AA^{-1}$)")
+            ax.set_xlabel(r"Rest-frame wavelength ($\rm \AA$)")
             ax.legend()
             ax.set_ylim([0, None])
             ax.autoscale(enable="True", axis="x", tight=True)
@@ -363,12 +380,12 @@ def create_mock_spectrum(sfh_mass_weighted, isochrones, sigma_star_kms, z, SNR,
 
         if plotit:
             fig, ax = plt.subplots(nrows=1, ncols=1, figsize=(fig_w, fig_h))
-            ax.plot(np.exp(lambda_vals_ssp_log), spec_log_agn, color="purple", 
-                    label=r"AGN continuum ($x_{\rm AGN} = %.2f, \, \alpha_\nu = %.2f$)" % (x_AGN, alpha_nu))
+            ax.plot(np.exp(lambda_vals_ssp_log), spec_log_agn, color="magenta", 
+                    label=r"AGN continuum")
             ax.plot(np.exp(lambda_vals_ssp_log), spec_log_conv_prev, color="black", alpha=0.5, label="Without AGN continuum")
             ax.plot(np.exp(lambda_vals_ssp_log), spec_log_conv, color="black", label="With AGN continuum")
-            ax.set_ylabel(f"$L$ (erg/s/$\AA$)")
-            ax.set_xlabel(f"$\lambda$")
+            ax.set_ylabel(r"$L \,\rm (erg\,s^{-1}\,\AA^{-1}$)")
+            ax.set_xlabel(r"Rest-frame wavelength ($\rm \AA$)")
             ax.legend()
             ax.set_ylim([0, None])
             ax.autoscale(enable="True", axis="x", tight=True)
@@ -382,21 +399,14 @@ def create_mock_spectrum(sfh_mass_weighted, isochrones, sigma_star_kms, z, SNR,
         spec_log_conv *= 10**(-0.4 * A_vals)
 
         if plotit:
-            fig, axs = plt.subplots(nrows=2, ncols=1, figsize=(fig_w, 2 * fig_h))
-            axs[0].plot(np.exp(lambda_vals_ssp_log), spec_log_conv_prev, color="black", alpha=0.5, label="Before extinction")
-            axs[0].plot(np.exp(lambda_vals_ssp_log), spec_log_conv, color="black", label="After extinction")
-            axs[0].set_ylabel(f"$L$ (erg/s/$\AA$)")
-            axs[0].set_xlabel(f"$\lambda$")
-            axs[0].legend()
-            axs[0].set_ylim([0, None])
-            axs[0].autoscale(enable="True", axis="x", tight=True)
-            axs[1].plot(np.exp(lambda_vals_ssp_log), 10**(-0.4 * A_vals), color="black", label=r"Extinction curve $(10^{-0.4 A(\lambda)})$")
-            axs[1].set_ylabel(f"Extinction factor")
-            axs[1].set_xlabel(f"$\lambda$")
-            axs[1].legend()
-            axs[1].set_ylim([0, None])
-            axs[1].autoscale(enable="True", axis="x", tight=True)
-
+            fig, ax = plt.subplots(nrows=1, ncols=1, figsize=(fig_w, fig_h))
+            ax.plot(np.exp(lambda_vals_ssp_log), spec_log_conv_prev, color="black", alpha=0.5, label="Before extinction")
+            ax.plot(np.exp(lambda_vals_ssp_log), spec_log_conv, color="black", label="After extinction")
+            ax.set_ylabel(r"$L \,\rm (erg\,s^{-1}\,\AA^{-1}$)")
+            ax.set_xlabel(r"Rest-frame wavelength ($\rm \AA$)")
+            ax.legend()
+            ax.set_ylim([0, None])
+            ax.autoscale(enable="True", axis="x", tight=True)
 
     ###########################################################################
     # 5. Apply the redshift 
@@ -432,11 +442,11 @@ def create_mock_spectrum(sfh_mass_weighted, isochrones, sigma_star_kms, z, SNR,
     # Plot to check
     if plotit:
         fig, ax = plt.subplots(nrows=1, ncols=1, figsize=(fig_w, fig_h))
-        ax.errorbar(x=lambda_vals_wifes_A, y=spec, yerr=spec_err, color="black")
+        ax.errorbar(x=lambda_vals_wifes_A, y=spec, yerr=spec_err, linewidth=0.5, elinewidth=0.5, color="black")
  
-        ax.set_title("Mock spectrum")
-        ax.set_xlabel(f"$\lambda$")
-        ax.set_ylabel(f"$L$ (erg/s/$\AA$)")
+        ax.set_title("Redshifted spectrum with noise")
+        ax.set_xlabel(r"Observer-frame wavelength ($\rm \AA$)")
+        ax.set_ylabel(r"$L \,\rm (erg\,s^{-1}\,\AA^{-1}$)")
         ax.set_ylim([0, None])
         ax.autoscale(enable="True", axis="x", tight=True)
 
@@ -448,36 +458,51 @@ def create_mock_spectrum(sfh_mass_weighted, isochrones, sigma_star_kms, z, SNR,
 #%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 ###############################################################################
 if __name__ == "__main__":
+    from ppxftests.sfhutils import load_sfh
+    
+    savefigs = True  # If true, save figures for paper
+    fig_path = "/priv/meggs3/u5708159/ppxftests/figs/"
+
     ###########################################################################
     # Mock spectra options
     ###########################################################################
     isochrones = "Padova"  # Set of isochrones to use 
-    
-    ###########################################################################
-    # GALAXY PROPERTIES
-    ###########################################################################
-    sigma_star_kms = 350   # LOS velocity dispersion, km/s
     z = 0.05               # Redshift 
-    SNR = 25               # S/N ratio
+    SNR = 50              # S/N ratio
+    gal = 44               # Galaxy to load
 
     ###########################################################################
     # DEFINE THE SFH
     ###########################################################################
-    # Idea 1: use a Gaussian kernel to smooth "delta-function"-like SFHs
-    # Idea 2: are the templates logarithmically spaced in age? If so, could use e.g. every 2nd template 
-    sfh_mass_weighted = np.zeros((3, 74))
-    sfh_mass_weighted[1, 10] = 1e7
-    sfh_mass_weighted[2, 60] = 1e10
+    sfh_mw, sfh_lw, sfr_avg, sigma_star_kms = load_sfh(gal=gal, plotit=True)
+
+    # Save 
+    if savefigs:
+        plt.figure(1).savefig(os.path.join(fig_path, f"ga{gal:004}_sfh_mw.pdf"), bbox_inches="tight", format="pdf")
+        plt.figure(2).savefig(os.path.join(fig_path, f"ga{gal:004}_sfh_lw.pdf"), bbox_inches="tight", format="pdf")
+        plt.figure(3).savefig(os.path.join(fig_path, f"ga{gal:004}_sfh_sfr.pdf"), bbox_inches="tight", format="pdf")
 
     ###########################################################################
     # CREATE THE MOCK SPECTRUM
     ###########################################################################
     spec, spec_err, lambda_valsA = create_mock_spectrum(
-        sfh_mass_weighted=sfh_mass_weighted,
+        sfh_mass_weighted=sfh_mw,
         isochrones=isochrones,
-        ngascomponents=3, 
-        sigma_gas_kms=[40, 350, 1e4], v_gas_kms=[0, 0, -1000], 
-        L_Ha_erg_s=[1e41, 1e40, 0.5e40], eline_model=["HII", "AGN", "BLR"],
+        ngascomponents=2, 
+        agn_continuum=True, alpha_nu=1.0, x_AGN=0.5,
+        sigma_gas_kms=[40, 350], v_gas_kms=[0, -100], 
+        L_Ha_erg_s=[0.5e40, 0.25e40], eline_model=["HII", "AGN"],
+        A_V=1.5,
         z=z, SNR=SNR, sigma_star_kms=sigma_star_kms,
         plotit=True)
+
+    # Save
+    if savefigs:
+        plt.figure(4).savefig(os.path.join(fig_path, f"ga{gal:004}_composite_spectra.pdf"), bbox_inches="tight", format="pdf")
+        plt.figure(5).savefig(os.path.join(fig_path, f"ga{gal:004}_losvd_conv.pdf"), bbox_inches="tight", format="pdf")
+        plt.figure(6).savefig(os.path.join(fig_path, f"ga{gal:004}_elines.pdf"), bbox_inches="tight", format="pdf")
+        plt.figure(7).savefig(os.path.join(fig_path, f"ga{gal:004}_agn_cont.pdf"), bbox_inches="tight", format="pdf")
+        plt.figure(8).savefig(os.path.join(fig_path, f"ga{gal:004}_extinction.pdf"), bbox_inches="tight", format="pdf")
+        plt.figure(9).savefig(os.path.join(fig_path, f"ga{gal:004}_spec.pdf"), bbox_inches="tight", format="pdf")
+
 
