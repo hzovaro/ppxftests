@@ -79,7 +79,7 @@ def plot_sfh_mass_weighted(sfh_mass_weighted, ages, metallicities,
     ax.set_yticks(range(len(metallicities)))
     ax.set_yticklabels(["{:.3f}".format(met / 0.02) for met in metallicities])
     ax.set_ylabel(r"Metallicity ($Z_\odot$)")
-    cax.set_ylabel(r"Mass-weighted template weight ($\log_{10}(\rm M_\odot)$)")
+    cax.set_ylabel(r"Mass-weighted template weight ($\log_{10}\left[\rm M_\odot\right]$)")
     ax.set_xticks(range(len(ages)))
     ax.set_xlabel("Age (Myr)")
     ax.set_xticklabels(["{:}".format(age / 1e6) for age in ages], rotation="vertical", fontsize="x-small")
