@@ -33,6 +33,7 @@ from cosmocalc import get_dist
 from log_rebin_errors import log_rebin_errors
 
 from ppxftests.ssputils import load_ssp_templates, get_bin_edges_and_widths, log_rebin_and_convolve_stellar_templates
+from ppxftests.sfhutils import load_sfh, compute_mw_age, compute_lw_age, compute_cumulative_mass, compute_cumulative_light
 from ppxftests.mockspec import FWHM_WIFES_INST_A
 from ppxftests.ppxf_plot import ppxf_plot, plot_sfh_mass_weighted
 
@@ -212,13 +213,218 @@ def ppxf_helper(args):
     # Return
     return pp_age_met
 
+###########################################################################
+# Function for saving variables to a DataFrame from multiple ppxf runs
+###########################################################################
+def add_stuff_to_df(pp_mc_list, pp_regul,
+                    R_V=4.05, plotit=False):
+
+    """
+    Given a list of MC ppxf instances plus an instance of ppxf from a 
+    regularised run, return a dict containing quantities derived the ppxf 
+    runs.
+    """
+    isochrones = pp_regul.isochrones
+    ages = pp_regul.ages
+
+    # STUFF TO STORE IN THE DATA FRAME
+    thisrow = {}  # Row to append to DataFrame
+
+    # Fit parameters
+    thisrow["Emission lines included in fit?"] = pp_regul.fit_gas
+    thisrow["AGN continuum included in fit?"] = pp_regul.fit_agn_cont
+    thisrow["Extinction curve included in fit?"] = True if pp_regul.reddening is not None else False
+    thisrow["Multiplicative polynomial included in fit?"] = True if pp_regul.mdegree > 0 else False
+    thisrow["Isochrones"] = isochrones
+
+    # 1-dimensional weights
+    thisrow["Stellar template weights (MC mean)"] = np.nanmean([pp.weights_stellar for pp in pp_mc_list], axis=0)
+    thisrow["Stellar template weights (MC error)"] = np.nanstd([pp.weights_stellar for pp in pp_mc_list], axis=0)
+    thisrow["Stellar template weights (regularised)"] = pp_regul.weights_stellar
+
+    # Stellar kinematics
+    if pp_regul.fit_gas:
+        thisrow["v_* (MC mean)"] = np.nanmean([pp.sol[0][0] for pp in pp_mc_list])
+        thisrow["v_* (MC error)"] = np.nanstd([pp.sol[0][0] for pp in pp_mc_list])
+        thisrow["v_* (regularised)"] = pp_regul.sol[0][0]
+        thisrow["sigma_* (MC mean)"] = np.nanmean([pp.sol[0][1] for pp in pp_mc_list])
+        thisrow["sigma_* (MC error)"] = np.nanstd([pp.sol[0][1] for pp in pp_mc_list])
+        thisrow["sigma_* (regularised)"] = pp_regul.sol[0][1]
+    else:
+        thisrow["v_* (MC mean)"] = np.nanmean([pp.sol[0] for pp in pp_mc_list])
+        thisrow["v_* (MC error)"] = np.nanstd([pp.sol[0] for pp in pp_mc_list])
+        thisrow["v_* (regularised)"] = pp_regul.sol[0]
+        thisrow["sigma_* (MC mean)"] = np.nanmean([pp.sol[1] for pp in pp_mc_list])
+        thisrow["sigma_* (MC error)"] = np.nanstd([pp.sol[1] for pp in pp_mc_list])
+        thisrow["sigma_* (regularised)"] = pp_regul.sol[1]
+
+    # Emisson lines: fluxes and kinematics
+    if pp_regul.fit_gas:
+        ngascomponents = np.nanmax(pp_regul.component)
+        thisrow["Number of emission line components in fit"] = ngascomponents
+        thisrow["Emission lines fitted"] = pp_regul.gas_names
+        thisrow["F_gas erg/s (regularised)"] = pp_regul.gas_flux * pp_regul.norm
+        thisrow["F_gas erg/s (MC mean)"] = np.nanmean([pp.gas_flux * pp.norm for pp in pp_mc_list], axis=0)
+        thisrow["F_gas erg/s (MC error)"] = np.nanstd([pp.gas_flux * pp.norm for pp in pp_mc_list], axis=0)
+
+        thisrow["v_gas (regularised)"] = pp_regul.v_gas
+        thisrow["v_gas (MC mean)"] = np.nanmean([pp.v_gas for pp in pp_mc_list], axis=0)
+        thisrow["v_gas (MC error)"] = np.nanstd([pp.v_gas for pp in pp_mc_list], axis=0)
+        thisrow["sigma_gas (regularised)"] = pp_regul.sigma_gas
+        thisrow["sigma_gas (MC mean)"] = np.nanmean([pp.sigma_gas for pp in pp_mc_list], axis=0)
+        thisrow["sigma_gas (MC error)"] = np.nanstd([pp.sigma_gas for pp in pp_mc_list], axis=0)
+    else:
+        thisrow["Number of emission line components in fit"] = 0
+  
+    # Light-weighted SFH (1D)
+    thisrow["SFH LW 1D (MC mean)"] = np.nanmean(np.array([pp.sfh_lw_1D for pp in pp_mc_list]), axis=0)
+    thisrow["SFH LW 1D (MC error)"] = np.nanstd(np.array([pp.sfh_lw_1D for pp in pp_mc_list]), axis=0)
+    thisrow["SFH LW 1D (regularised)"] = pp_regul.sfh_lw_1D
+
+    # Mass-weighted SFH (1D)
+    thisrow["SFH MW 1D (MC mean)"] = np.nanmean(np.array([pp.sfh_mw_1D for pp in pp_mc_list]), axis=0)
+    thisrow["SFH MW 1D (MC error)"] = np.nanstd(np.array([pp.sfh_mw_1D for pp in pp_mc_list]), axis=0)
+    thisrow["SFH MW 1D (regularised)"] = pp_regul.sfh_mw_1D
+
+    # Cumulative mass (log)
+    thisrow["Cumulative mass vs. age cutoff (MC mean)"] = np.nanmean(np.array([[compute_cumulative_mass(pp.sfh_mw_1D, isochrones=isochrones, age_thresh_upper=a) for a in ages[1:]] for pp in pp_mc_list]), axis=0)
+    thisrow["Cumulative mass vs. age cutoff (MC error)"] = np.nanstd(np.array([[compute_cumulative_mass(pp.sfh_mw_1D, isochrones=isochrones, age_thresh_upper=a) for a in ages[1:]] for pp in pp_mc_list]), axis=0)
+    thisrow["Cumulative mass vs. age cutoff (regularised)"] = np.array([compute_cumulative_mass(pp_regul.sfh_mw_1D, isochrones=isochrones, age_thresh_upper=a) for a in ages[1:]])
+
+    # Cumulative light (log)
+    thisrow["Cumulative light vs. age cutoff (MC mean)"] = np.nanmean(np.array([[compute_cumulative_light(pp.sfh_lw_1D, isochrones=isochrones, age_thresh_upper=a) for a in ages[1:]] for pp in pp_mc_list]), axis=0)
+    thisrow["Cumulative light vs. age cutoff (MC error)"] = np.nanstd(np.array([[compute_cumulative_light(pp.sfh_lw_1D, isochrones=isochrones, age_thresh_upper=a) for a in ages[1:]] for pp in pp_mc_list]), axis=0)
+    thisrow["Cumulative light vs. age cutoff (regularised)"] = np.array([compute_cumulative_light(pp_regul.sfh_lw_1D, isochrones=isochrones, age_thresh_upper=a) for a in ages[1:]])
+
+    # Cumulative mass fraction (log)
+    M_tot_vals = np.zeros(len(pp_mc_list))
+    M_cum_vals = np.zeros((len(pp_mc_list), len(ages[:-1])))
+    M_frac_vals = np.zeros((len(pp_mc_list), len(ages[:-1])))
+    fig, ax = plt.subplots(figsize=(10, 5)) if plotit else (None, None)
+    for ii, pp in enumerate(pp_mc_list):
+        M_tot = np.nansum(pp.sfh_mw_1D)
+        M_cum = np.array([compute_cumulative_mass(pp.sfh_mw_1D, isochrones=isochrones, age_thresh_upper=a, log_result=False) for a in ages[1:]])
+        M_frac = M_cum / M_tot
+        # Store in arrays
+        M_tot_vals[ii] = M_tot
+        M_cum_vals[ii] = M_cum
+        M_frac_vals[ii, :] = M_frac
+        ax.step(ages[:-1], M_frac, color="k", alpha=0.4, where="mid") if plotit else None
+
+    # Compute mean/std values
+    M_tot_MC_mean = np.nanmean(M_tot_vals)
+    M_tot_MC_err = np.nanstd(M_tot_vals)
+    M_frac_MC_mean = np.nanmean(M_frac_vals, axis=0)
+    M_frac_MC_err = np.nanstd(M_frac_vals, axis=0)
+    M_tot_regul = np.nansum(pp_regul.sfh_mw_1D)
+    M_cum_regul = np.array([compute_cumulative_mass(pp_regul.sfh_mw_1D, isochrones=isochrones, age_thresh_upper=a, log_result=False) for a in ages[1:]])
+    M_frac_regul = M_cum_regul / M_tot_regul
+
+    if plotit:
+        ax.step(ages[:-1], M_frac_MC_mean, linewidth=2.0, where="mid", color="b", label="MC")
+        ax.step(ages[:-1], M_frac_regul, linewidth=2.0, where="mid", color="r", label="Regularised")
+        ax.fill_between(x=ages[:-1], y1=M_frac_MC_mean - M_frac_MC_err, y2=M_frac_MC_mean + M_frac_MC_err, color="b", alpha=0.4, step="mid")
+        ax.set_yscale("log")
+        ax.set_xscale("log")
+        ax.set_ylim([1e-6, None])
+        ax.set_title("Cumulative Mass fraction")
+        ax.set_ylabel("Cumulative mass fraction")
+        ax.set_xlabel("Age")
+        ax.legend()
+
+    # Store in dict
+    thisrow["Cumulative mass fraction vs. age cutoff (MC mean)"] = M_frac_MC_mean
+    thisrow["Cumulative mass fraction vs. age cutoff (MC error)"] = M_frac_MC_err
+    thisrow["Cumulative mass fraction vs. age cutoff (regularised)"] =  M_frac_regul
+
+    # Cumulative light fraction (log)
+    L_tot_vals = np.zeros(len(pp_mc_list))
+    L_cum_vals = np.zeros((len(pp_mc_list), len(ages[:-1])))
+    L_frac_vals = np.zeros((len(pp_mc_list), len(ages[:-1])))
+    fig, ax = plt.subplots(figsize=(10, 5)) if plotit else (None, None)
+    for ii, pp in enumerate(pp_mc_list):
+        L_tot = np.nansum(pp.sfh_lw_1D)
+        L_cum = np.array([compute_cumulative_light(pp.sfh_lw_1D, isochrones=isochrones, age_thresh_upper=a, log_result=False) for a in ages[1:]])
+        L_frac = L_cum / L_tot
+        # Store in arrays
+        L_tot_vals[ii] = L_tot
+        L_cum_vals[ii] = L_cum
+        L_frac_vals[ii, :] = L_frac
+        ax.step(ages[:-1], L_frac, color="k", alpha=0.4, where="mid") if plotit else None
+
+    # Compute mean/std values
+    L_tot_MC_mean = np.nanmean(L_tot_vals)
+    L_tot_MC_err = np.nanstd(L_tot_vals)
+    L_frac_MC_mean = np.nanmean(L_frac_vals, axis=0)
+    L_frac_MC_err = np.nanstd(L_frac_vals, axis=0)
+    L_tot_regul = np.nansum(pp_regul.sfh_lw_1D)
+    L_cum_regul = np.array([compute_cumulative_light(pp_regul.sfh_lw_1D, isochrones=isochrones, age_thresh_upper=a, log_result=False) for a in ages[1:]])
+    L_frac_regul = L_cum_regul / L_tot_regul
+
+    if plotit:
+        ax.step(ages[:-1], L_frac_MC_mean, linewidth=2.0, where="mid", color="b", label="MC")
+        ax.step(ages[:-1], L_frac_regul, linewidth=2.0, where="mid", color="r", label="Regularised")
+        ax.fill_between(x=ages[:-1], y1=L_frac_MC_mean - L_frac_MC_err, y2=L_frac_MC_mean + L_frac_MC_err, color="b", alpha=0.4, step="mid")
+        ax.set_yscale("log")
+        ax.set_xscale("log")
+        ax.set_ylim([1e-6, None])
+        ax.set_title("Cumulative light fraction")
+        ax.set_ylabel("Cumulative light fraction")
+        ax.set_xlabel("Age")
+        ax.legend()
+
+    # Store in dict
+    thisrow["Cumulative light fraction vs. age cutoff (MC mean)"] = L_frac_MC_mean
+    thisrow["Cumulative light fraction vs. age cutoff (MC error)"] = L_frac_MC_err
+    thisrow["Cumulative light fraction vs. age cutoff (regularised)"] = L_frac_regul
+
+    # Mass-weighted age as a function of time (log)
+    thisrow["Mass-weighted age vs. age cutoff (MC mean)"] = np.nanmean(np.array([[compute_mw_age(pp.sfh_mw_1D, isochrones=isochrones, age_thresh_upper=a)[0] for a in ages[1:]] for pp in pp_mc_list]), axis=0)
+    thisrow["Mass-weighted age vs. age cutoff (MC error)"] = np.nanstd(np.array([[compute_mw_age(pp.sfh_mw_1D, isochrones=isochrones, age_thresh_upper=a)[0] for a in ages[1:]] for pp in pp_mc_list]), axis=0)
+    thisrow["Mass-weighted age vs. age cutoff (regularised)"] = np.array([compute_mw_age(pp_regul.sfh_mw_1D, isochrones=isochrones, age_thresh_upper=a)[0] for a in ages[1:]])
+
+    # Light-weighted age as a function of time (log)
+    thisrow["Light-weighted age vs. age cutoff (MC mean)"] = np.nanmean(np.array([[compute_lw_age(pp.sfh_lw_1D, isochrones=isochrones, age_thresh_upper=a)[0] for a in ages[1:]] for pp in pp_mc_list]), axis=0)
+    thisrow["Light-weighted age vs. age cutoff (MC error)"] = np.nanstd(np.array([[compute_lw_age(pp.sfh_lw_1D, isochrones=isochrones, age_thresh_upper=a)[0] for a in ages[1:]] for pp in pp_mc_list]), axis=0)
+    thisrow["Light-weighted age vs. age cutoff (regularised)"] = np.array([compute_lw_age(pp_regul.sfh_lw_1D, isochrones=isochrones, age_thresh_upper=a)[0] for a in ages[1:]])
+
+    # Extinction and/or polynomial fits
+    if pp_regul.reddening is not None:
+        thisrow["A_V (MC mean)"] = R_V * np.nanmean([pp.reddening for pp in pp_mc_list])
+        thisrow["A_V (MC error)"] = R_V * np.nanstd([pp.reddening for pp in pp_mc_list])
+        thisrow["A_V (regularised)"] = pp_regul.reddening * R_V
+        thisrow["10^-0.4A(lambda) (MC mean)"] = np.nanmean(np.array([pp.mpoly for pp in pp_mc_list]), axis=0)
+        thisrow["10^-0.4A(lambda) (MC error)"] = np.nanstd(np.array([pp.mpoly for pp in pp_mc_list]), axis=0)
+        thisrow["10^-0.4A(lambda) (regularised)"] = pp_regul.mpoly
+    else:
+        thisrow["Multiplicative polynomial (MC mean)"] = np.nanmean(np.array([pp.mpoly for pp in pp_mc_list]), axis=0)
+        thisrow["Multiplicative polynomial (MC error)"] = np.nanstd(np.array([pp.mpoly for pp in pp_mc_list]), axis=0)
+        thisrow["Multiplicative polynomial (regularised)"] = pp_regul.mpoly
+    thisrow["Wavelength (rest frame, Å, log-rebinned)"] = pp_regul.lam
+
+    # AGN template weights 
+    if pp_regul.fit_agn_cont:
+        thisrow["ppxf alpha_nu_vals"] = pp_regul.alpha_nu_vals
+        thisrow["AGN template weights (MC mean)"] = np.nanmean([pp.weights_agn for pp in pp_mc_list], axis=0)
+        thisrow["AGN template weights (MC error)"] = np.nanstd([pp.weights_agn for pp in pp_mc_list], axis=0)
+        thisrow["AGN template weights (regularised)"] = pp_regul.weights_agn
+        # Express as a fraction of the total stellar weights (accounts for extinction)
+        thisrow["x_AGN (total, MC mean)"] = np.nanmean([np.nansum(pp.weights_agn) / np.nansum(pp.weights_stellar) for pp in pp_mc_list])
+        thisrow["x_AGN (total, MC error)"] = np.nanstd([np.nansum(pp.weights_agn) / np.nansum(pp.weights_stellar) for pp in pp_mc_list])
+        thisrow["x_AGN (total, regularised)"] = np.nansum(pp_regul.weights_agn) / np.nansum(pp_regul.weights_stellar)
+        thisrow["x_AGN (individual, MC mean)"] = np.nanmean([pp.weights_agn / np.nansum(pp.weights_stellar) for pp in pp_mc_list], axis=0)
+        thisrow["x_AGN (individual, MC error)"] = np.nanstd([pp.weights_agn / np.nansum(pp.weights_stellar) for pp in pp_mc_list], axis=0)
+        thisrow["x_AGN (individual, regularised)"] = pp_regul.weights_agn / np.nansum(pp_regul.weights_stellar)
+
+    return thisrow
+
 ##############################################################################
 # START FUNCTION DEFINITION
 ##############################################################################
 def run_ppxf(spec, spec_err, lambda_vals_A, z, 
              isochrones, metals_to_use=None,
              fit_agn_cont=False, alpha_nu_vals=[0.5, 1.0, 1.5, 2.0],
-             fit_gas=True, ngascomponents=0, tie_balmer=True,
+             fit_gas=True, ngascomponents=0, tie_balmer=False,
              mdegree=4, adegree=-1, reddening=None,
              FWHM_inst_A=FWHM_WIFES_INST_A,
              bad_pixel_ranges_A=[],
@@ -344,6 +550,17 @@ def run_ppxf(spec, spec_err, lambda_vals_A, z,
         r2_px = np.nanargmin(np.abs(np.exp(lambda_vals_log) - r2_A))
         bad_px_mask[r1_px:r2_px] = True
     good_px = np.squeeze(np.argwhere(~bad_px_mask))
+
+    # For debugging: check the bad pixel ranges
+    if plotit:
+        fig, ax = plt.subplots(figsize=(15, 5))
+        ax.plot(np.exp(lambda_vals_log), spec_log, color="k")
+        for r_A in bad_pixel_ranges_A:
+            r1_A, r2_A = r_A
+            ax.axvspan(xmin=r1_A, xmax=r2_A, color="orange", alpha=0.3)
+        ax.set_title("Bad pixel ranges")
+        ax.set_xlabel("Wavelength (Å)")
+        ax.set_ylabel(r"Flux ($F_\lambda$)")
 
     # Normalize spectrum to avoid numerical issues
     lambda_norm_idx = np.nanargmin(np.abs(np.exp(lambda_vals_log) / (1 + z) - lambda_norm_A))
@@ -932,15 +1149,45 @@ def run_ppxf(spec, spec_err, lambda_vals_A, z,
     bin_edges, bin_widths = get_bin_edges_and_widths(isochrones)
     pp.sfr_mean = pp.sfh_mw_1D / bin_widths 
 
+    # Gas parameters, if used
+    if fit_gas:
+        pp.fit_gas = True
+        pp.ngascomponents = ngascomponents
+        n_lines = n_balmer_lines + n_forbidden_lines
+        # Sort the emission lines in order of narrowest ==> broadest
+        sigma_vals = []
+        v_vals = []
+        F_vals = []
+        for nn in range(ngascomponents):
+            v, sigma = pp.sol[nn + 1]
+            sigma_vals.append(sigma)
+            v_vals.append(v)
+            F_vals.append(pp.gas_flux[nn * n_lines:(nn + 1) * n_lines])
+        sort_idx = np.argsort(sigma_vals)
+        pp.v_gas = [v_vals[ii] for ii in sort_idx]
+        pp.sigma_gas = [sigma_vals[ii] for ii in sort_idx]
+        pp.F_gas = [F_vals[ii] for ii in sort_idx]
+        pp.v_star = pp.sol[0][0]
+        pp.sigma_star = pp.sol[0][1]
+    else:
+        pp.fit_gas = False
+        pp.ngascomponents = 0
+        pp.v_gas = None
+        pp.sigma_gas = None
+        pp.F_gas = None
+        pp.v_star = pp.sol[0]
+        pp.sigma_star = pp.sol[1]
+    pp.tie_balmer = tie_balmer
+
     # AGN continuum parameters, if used 
     if fit_agn_cont:
-        pp.alpha_nu_vals = alpha_nu_vals
         pp.fit_agn_cont = True
+        pp.alpha_nu_vals = alpha_nu_vals
         pp.weights_agn = pp.weights[~pp.gas_component][-n_agn_templates:] 
         pp.weights_stellar = pp.weights[~pp.gas_component][:-n_agn_templates] 
     else:
-        pp.alpha_nu_vals = None 
         pp.fit_agn_cont = False
+        pp.alpha_nu_vals = None 
         pp.weights_agn = None
         pp.agn_bestfit = None
         pp.weights_stellar = pp.weights[~pp.gas_component]
