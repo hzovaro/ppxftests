@@ -44,7 +44,7 @@ fit_agn_cont = True  # NOTE: run this TWICE - once with AGN cont. in the fit, on
 # Parameters
 # alpha_nu_vals = np.linspace(0.3, 2.1, 5)  # What is a typical value for low-z Seyfert galaxies?
 alpha_nu_vals = [np.nan, 0.3, 0.5, 1.0, 2.0]
-x_AGN_vals = [np.nan, 0.1, 0.5, 1.0] # NOTE: NaNs are included to create a "special case" where we run without the AGN continuum
+x_AGN_vals = [np.nan, 0.1, 0.5, 1.0, 2.0] # NOTE: NaNs are included to create a "special case" where we run without the AGN continuum
 
 ###########################################################################
 # Helper function for running MC simulations
@@ -64,11 +64,11 @@ def ppxf_helper(args):
 
     # Run ppxf
     pp = run_ppxf(spec=spec_noise, spec_err=spec_err, lambda_vals_A=lambda_vals_A,
-                  z=z, ngascomponents=1,
+                  z=z, isochrones="Padova",
+                  fit_gas=False, tie_balmer=True, ngascomponents=1,
                   fit_agn_cont=fit_agn_cont,
+                  reddening=1.0, mdegree=-1,
                   regularisation_method="none", 
-                  isochrones="Padova",
-                  fit_gas=False, tie_balmer=True,
                   plotit=False, savefigs=False, interactive_mode=False)
     return pp
 
@@ -167,6 +167,22 @@ for gal in gals:
             plotit=False)
 
         ###########################################################################
+        # Run ppxf with regularisation
+        ###########################################################################
+        t = time()
+        print(f"Gal {gal:004}: Regularisation: running ppxf on {nthreads} threads...")
+        pp_regul = run_ppxf(spec=spec, spec_err=spec_err, lambda_vals_A=lambda_vals_A,
+                      z=z, isochrones=isochrones,
+                      fit_gas=False, tie_balmer=True, ngascomponents=1,
+                      fit_agn_cont=fit_agn_cont,
+                      reddening=1.0, mdegree=-1,
+                      regularisation_method="auto",
+                      delta_regul_min=1, regul_max=5e4, delta_delta_chi2_min=1,
+                      regul_nthreads=nthreads,
+                      plotit=False, savefigs=False, interactive_mode=False)
+        print(f"Gal {gal:004}: Regularisation: total time in run_ppxf: {time() - t:.2f} seconds")
+
+        ###########################################################################
         # Run ppxf WITHOUT regularisation, using a MC approach
         ###########################################################################
         # Input arguments
@@ -181,22 +197,6 @@ for gal in gals:
         print(f"Gal {gal:004}: MC simulations: total time in ppxf: {time() - t:.2f} s")
 
         ###########################################################################
-        # Run ppxf with regularisation
-        ###########################################################################
-        t = time()
-        print(f"Gal {gal:004}: Regularisation: running ppxf on {nthreads} threads...")
-        pp_regul = run_ppxf(spec=spec, spec_err=spec_err, lambda_vals_A=lambda_vals_A,
-                      z=z, ngascomponents=1,
-                      fit_agn_cont=fit_agn_cont,
-                      regularisation_method="auto",
-                      isochrones=isochrones,
-                      fit_gas=False, tie_balmer=True,
-                      delta_regul_min=1, regul_max=5e4, delta_delta_chi2_min=1,
-                      regul_nthreads=nthreads,
-                      plotit=False, savefigs=False, interactive_mode=False)
-        print(f"Gal {gal:004}: Regularisation: total time in run_ppxf: {time() - t:.2f} seconds")
-
-        ###########################################################################
         # Compute mean quantities from the ppxf runs
         ###########################################################################
         thisrow = add_stuff_to_df(pp_mc_list, pp_regul, ages, isochrones)
@@ -206,21 +206,20 @@ for gal in gals:
 
         df = df.append({**thisrow, **truth_dict}, ignore_index=True)
         
+        # Add metadata 
+        df["SNR"] = SNR
+        df["niters"] = niters
+        df["nthreads"] = nthreads
+        df["z"] = z
+        df["Emission lines?"] = False
+        df["AGN continuum included in fit?"] = fit_agn_cont
+        df["isochrones"] = isochrones
+        df["sigma_star_kms"] = sigma_star_kms
+
         # Save every iteration in case it shits itself 
-        df.to_hdf(os.path.join(data_path, f"ga{gal}_agncont_agncontfit={'true' if fit_agn_cont else 'false'}.hd5"), key="agn")
+        df.to_hdf(os.path.join(data_path, f"ga{gal}_agncont.hd5"), key="agn")
 
     ###############################################################################
     # Save DataFrame to file 
     ###############################################################################
-    # Add metadata 
-    df["SNR"] = SNR
-    df["niters"] = niters
-    df["nthreads"] = nthreads
-    df["z"] = z
-    df["Emission lines?"] = False
-    df["AGN continuum included in fit?"] = fit_agn_cont
-    df["isochrones"] = isochrones
-    df["sigma_star_kms"] = sigma_star_kms
-
-    # Save
-    df.to_hdf(os.path.join(data_path, f"ga{gal}_agncont_agncontfit={'true' if fit_agn_cont else 'false'}.hd5"), key="agn")
+    df.to_hdf(os.path.join(data_path, f"ga{gal}_agncont.hd5"), key="agn")

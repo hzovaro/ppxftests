@@ -3,7 +3,7 @@
 # Plot MW/LW age, cumulative measures, etc. as a function of cutoff age,
 # for each fitting run.
 ###############################################################################
-mport os, sys 
+import os, sys 
 import numpy as np
 import pandas as pd
 from itertools import product
@@ -38,178 +38,98 @@ isochrones = "Padova"
 ###############################################################################
 gal = int(sys.argv[1]) 
 if not debug:
-    df_fname = f"ga{gal:004d}_{'mpoly' if mpoly else 'ext'}.hd5"
+    df_fname = f"ga{gal:004d}_ext.hd5"
 else:
     df_fname = f"ga{gal:004d}_DEBUG.hd5"
 df = pd.read_hdf(os.path.join(data_path, df_fname), key="elines")
 
-ngascomponents_vals = df["Number of emission line components in fit"].unique()
+ngas_input_vals = df["Number of emission line components in input"].unique()
+ngas_input_vals[np.isnan(ngas_input_vals)] = 0
 
-# Multi-page pdfs
-if savefigs:
-    pp_sfh = PdfPages(os.path.join(fig_path, f"ga{gal}_sfhs.pdf"))
-    pp_meas = PdfPages(os.path.join(fig_path, f"ga{gal}_meas.pdf"))
+# In the component with 0 lines fitted, ngascomponents is nan; replace this with 0 
+df.loc[np.isnan(df["Number of emission line components in fit"]), "Number of emission line components in fit"] = 0
+# Chop off the last row
+df = df.iloc[:5]
 
-###############################################################################
-# Summary plot
-###############################################################################
+#//////////////////////////////////////////////////////////////////////////////
+# Accuracy of age measurements 
+# Stick with a 1 Gyr cutoff for now 
+#//////////////////////////////////////////////////////////////////////////////
 # Get the age & metallicity dimensions
 _, _, metallicities, ages = load_ssp_templates(isochrones)
 
+age_thresh = 1e9
+age_thresh_idx = np.nanargmin(np.abs(ages - age_thresh))
 
-# For each combination of alpha_nu, x_AGN, make this plot
-for ngascomponents in ngascomponents_vals:
-    print(f"Processing parameter combination ngascomponents = {ngascomponents:.1f}...")
-    # IF both are NaN, then do NOT add an AGN continuum
-    if np.isnan(ngascomponents):
-        title_str = f"ga{gal:004} (no emission lines)"
-        cond = np.isnan(df["Number of emission line components in fit"])
-    else:
-        title_str = f"ga{gal:004} " + r"(ngascomponents = )" % (ngascomponents)
-        cond = df["Number of emission line components in fit"] == ngascomponents
+df_ages = pd.DataFrame()
+for ngas_input in ngas_input_vals:
+    cond = df["Number of emission line components in input"] == ngas_input
 
-    if not np.any(cond):
-        print("Row missing from DataFrame! Skipping...")
-        continue
-  
-    #//////////////////////////////////////////////////////////////////////////////
-    # Plot the SFH
-    #//////////////////////////////////////////////////////////////////////////////
-    fig, axs = plt.subplots(nrows=2, ncols=1, figsize=(16, 10))
-    for weighttype, ax in zip(["Mass", "Light"], axs):
-        norm = np.nansum(df.loc[cond, f"SFH {weighttype[0]}W 1D (input)"].values.item())
-        
-        ax.step(x=ages, y=df.loc[cond, f"SFH {weighttype[0]}W 1D (input)"].values.item() / norm, where="mid", color="blue", label="SFH (input)", linewidth=2.5)
-        ax.step(x=ages, y=df.loc[cond, f"SFH {weighttype[0]}W 1D (regularised)"].values.item()[0] / norm, where="mid", color="indigo", label="SFH (regularised)", linewidth=1.0)
-        ax.step(x=ages, y=df.loc[cond, f"SFH {weighttype[0]}W 1D (MC mean)"].values.item()[0] / norm, where="mid", color="cornflowerblue", label="SFH (MC)", linewidth=1.0)
-        ax.errorbar(x=ages, 
-                        y=df.loc[cond, f"SFH {weighttype[0]}W 1D (MC mean)"].values.item()[0] / norm,
-                        yerr=df.loc[cond, f"SFH {weighttype[0]}W 1D (MC error)"].values.item()[0] / norm,
-                        linestyle="none", color="cornflowerblue")
-        ax.axhline(1e-4, color="k", ls="--", linewidth=1)
+    thisrow = {}
+    thisrow["ngas_input"] = ngas_input
+    for weighttype in ["Mass-weighted age", "Light-weighted age", "Cumulative mass", "Cumulative light"]:
+        for meastype in ["regularised", "MC mean", "MC error", "input"]:
+            thisrow[f"{weighttype} vs. age cutoff ({meastype})"] = df.loc[cond, f"{weighttype} vs. age cutoff ({meastype})"].values.item()[age_thresh_idx]
 
-        # Decorations
-        ax.set_yscale("log")
-        ax.set_xscale("log")
-        ax.legend(loc="best", fontsize="x-small")
-        ax.grid()
-        ax.set_ylabel(f"{weighttype} fraction")
-        ax.set_xlabel("Age (yr)")
-        ax.autoscale(axis="x", tight=True, enable=True)
+    df_ages = df_ages.append(thisrow, ignore_index=True)
 
-    axs[0].set_title(title_str)
-    if savefigs:
-        pp_sfh.savefig(fig, bbox_inches="tight")
+# Plot
+colour_lists = [
+    ("red", "maroon", "pink"),
+    ("green", "darkgreen", "lightgreen"),
+    ("blue", "indigo", "cornflowerblue"),
+    ("gold", "brown", "orange")
+]
 
-    #//////////////////////////////////////////////////////////////////////////////
-    # Plot the mean mass- and light-weighted age vs. age threshold
-    # expressed as an ERROR
-    #//////////////////////////////////////////////////////////////////////////////
-    fig, axs = plt.subplots(nrows=2, ncols=5, figsize=(22, 8))
-    fig.subplots_adjust(left=0.025, right=1 - 0.025, top=1 - 0.05, bottom=0.025)
-    fig.suptitle(title_str)
-
-    colour_lists = [
-        ("red", "maroon", "pink"),
-        ("green", "darkgreen", "lightgreen"),
-        ("blue", "indigo", "cornflowerblue"),
-        ("gold", "brown", "orange")
-    ]
-
-    # PLOT: 
-    for cc, weighttype in enumerate(["Mass-weighted age", "Light-weighted age", "Cumulative mass", "Cumulative light"]):
-        colname = f"{weighttype} vs. age cutoff"
-        colour_input, colour_regul, colour_mc = colour_lists[cc]
-
-        #//////////////////////////////////////////////////////////////////////
-        # Plot the measured values vs. age
-        axs[0][cc].step(x=ages[1:], y=df.loc[cond, f"{colname} (input)"].values.item(), label=f"{weighttype}", where="mid", linewidth=2.5, color=colour_input)
-        axs[0][cc].step(x=ages[1:], y=df.loc[cond, f"{colname} (regularised)"].values.item()[0], label=f"{weighttype} (regularised)", where="mid", color=colour_regul)
-        y_meas = df.loc[cond, f"{colname} (MC mean)"].values.item()[0]
-        y_err = df.loc[cond, f"{colname} (MC error)"].values.item()[0]
-        axs[0][cc].step(x=ages[1:], y=y_meas, where="mid", color=colour_mc, label=f"{weighttype} (MC)")
-        axs[0][cc].fill_between(x=ages[1:], y1=y_meas - y_err, y2=y_meas + y_err, step="mid", alpha=0.2, color=colour_mc)
-
-        # Decorations  
-        axs[0][cc].axvspan(ages[1], ages[np.argwhere(np.isfinite(df.loc[cond, f"{colname} (input)"].values.item()))[0][0]], color="grey", alpha=0.2)  
-        axs[0][cc].set_xscale("log")
-        axs[0][cc].legend(loc="upper left", fontsize="x-small")
-        axs[0][cc].set_xlabel("Age threshold (yr)")
-        axs[0][cc].set_ylabel(f"{weighttype} (log yr)" if weighttype.endswith("age") else f"{weighttype} " + r"($M_\odot$)")
-        axs[0][cc].set_xlim([ages[0], ages[-1]])
-        axs[0][cc].grid()
-
-        #//////////////////////////////////////////////////////////////////////
-        # Plot the measured values - the input values ("delta") vs. age
-        axs[1][cc].step(x=ages[1:], y=df.loc[cond, f"{colname} (regularised)"].values.item()[0] - df.loc[cond, f"{colname} (input)"].values.item(), 
-                    label=f"{colname} (regularised)", where="mid", color=colour_regul)
-        log_y_meas = df.loc[cond, f"{colname} (MC mean)"].values.item()[0]
-        log_y_input = df.loc[cond, f"{colname} (input)"].values.item()
-        log_y_err = df.loc[cond, f"{colname} (MC error)"].values.item()[0]
-        log_dy = log_y_meas - log_y_input
-        log_dy_lower = log_y_meas - log_y_err - log_y_input
-        log_dy_upper = log_y_meas + log_y_err - log_y_input
-        axs[1][cc].step(x=ages[1:], y=log_dy, where="mid", color=colour_mc, label=f"{weighttype} (MC)")
-        axs[1][cc].fill_between(x=ages[1:], y1=log_dy_lower, y2=log_dy_upper, step="mid", alpha=0.2, color=colour_mc)
-        
-        # Decorations
-        axs[1][cc].axvspan(ages[1], ages[np.argwhere(np.isfinite(log_y_input))[0][0]], color="grey", alpha=0.2)
-        axs[1][cc].axhline(0, color="k")   
-        axs[1][cc].set_xscale("log")
-        axs[1][cc].legend(loc="upper left", fontsize="x-small")
-        axs[1][cc].set_xlabel("Age threshold (yr)")
-        axs[1][cc].set_ylabel(r"$\Delta$" + f" {colname} error (log yr)")
-        axs[1][cc].set_xlim([ages[0], ages[-1]])
-        axs[1][cc].grid()
-        axs[1][cc].autoscale(axis="x", tight=True, enable=True)
-
-    #//////////////////////////////////////////////////////////////////////////////
-    # AGN template weights 
-    #//////////////////////////////////////////////////////////////////////////////
-    alpha_nu_vals_ppxf = df.loc[cond, "ppxf alpha_nu_vals"].values.item()[0]
-    x_AGN_fit_vals_regul = df.loc[cond, "x_AGN (individual, regularised)"].values.item()
-    x_AGN_fit_vals_mc = df.loc[cond, "x_AGN (individual, MC mean)"].values.item()
-    x_AGN_fit_vals_mc_err = df.loc[cond, "x_AGN (individual, MC error)"].values.item()
-
-    axs[0][-1].plot(alpha_nu_vals_ppxf, x_AGN_fit_vals_regul, "bo", label="AGN template weights (regularised)")
-    axs[0][-1].errorbar(x=alpha_nu_vals_ppxf, y=x_AGN_fit_vals_mc, yerr=x_AGN_fit_vals_mc_err, 
-                marker="o", color="cornflowerblue", linestyle="none", label="AGN template weights (MC)")
-    if ~np.isnan(alpha_nu):
-        axs[0][-1].axvline(alpha_nu, color="black", label=r"$\alpha_\nu$ (input)")
-        axs[0][-1].axhline(x_AGN, color="black", label=r"$x_{\rm AGN}$ (input)")
-        axs[0][-1].axhline(np.nansum(x_AGN_fit_vals_regul), ls="--", color="purple", label=r"Total $x_{\rm AGN}$ (regularised)")
-        axs[0][-1].axhline(np.nansum(x_AGN_fit_vals_mc), ls="--", color="cornflowerblue", label=r"Total $x_{\rm AGN}$ (MC)")
-        axs[0][-1].axhspan(ymin=np.nansum(x_AGN_fit_vals_mc) - np.sqrt(np.nansum(x_AGN_fit_vals_mc_err**2)),
-                   ymax=np.nansum(x_AGN_fit_vals_mc) + np.sqrt(np.nansum(x_AGN_fit_vals_mc_err**2)), 
-                   alpha=0.2, color="cornflowerblue")
-    else:
-        axs[0][-1].axhline(0, color="black", label=r"$x_{\rm AGN}$ (input)")
-    axs[0][-1].legend(fontsize="x-small", loc="best")
-    axs[0][-1].set_xticks(alpha_nu_vals_ppxf)
-    axs[0][-1].set_xlabel(r"$\alpha_\nu$")
-    axs[0][-1].set_ylabel(r"$x_{\rm AGN}$")
-    axs[0][-1].grid()
-    axs[0][-1].set_xlim([0, 3.0])
-
-    axs[1][-1].set_visible(False)
-
-    #//////////////////////////////////////////////////////////////////////////////
-    # Add as text the A_V 
-    #//////////////////////////////////////////////////////////////////////////////
-    s = r"Input $A_V = %.2f$" % df.loc[cond, "A_V (input)"].values[0] + "\n" +\
-        r"Regularised $A_V = %.2f$" % df.loc[cond, "A_V (regularised)"].values[0] + "\n" +\
-        r"MC $A_V = %.2f \pm %.2f$" % (df.loc[cond, "A_V (MC mean)"].values[0], df.loc[cond, "A_V (MC error)"].values[0])
-    axs[0][0].text(s=s, x=0.95, y=0.05, transform=axs[0][0].transAxes, verticalalignment="bottom", horizontalalignment="right")
-
-    # Save figures
-    if savefigs:
-        pp_meas.savefig(fig, bbox_inches="tight")
-
-    if not savefigs:
-        Tracer()()
-    plt.close("all")
-
-# Finish writing to file
+###############################################################################
+# Plotting
+###############################################################################
 if savefigs:
-    pp_sfh.close()
-    pp_meas.close()
+    pp = PdfPages(os.path.join(fig_path, f"ga{gal:004d}_eline_params.pdf"))
+
+#//////////////////////////////////////////////////////////////////////////////
+# Plot age estimates, etc. as a function of the number of fitted components
+#//////////////////////////////////////////////////////////////////////////////
+fig, axs = plt.subplots(nrows=2, ncols=4, figsize=(20, 8))
+fig.suptitle("How do emission lines affect the ppxf fit?")
+axs[0][1].set_visible(False)
+axs[1][1].set_visible(False)
+axs[0][3].set_visible(False)
+axs[1][3].set_visible(False)
+axs = [axs[0][0], axs[1][0], axs[0][2], axs[1][2]]
+for cc, weighttype in enumerate(["Mass-weighted age", "Light-weighted age", "Cumulative mass", "Cumulative light"]):
+    colour_input, colour_regul, colour_mc = colour_lists[cc]
+    colname = f"{weighttype} vs. age cutoff"
+    if weighttype.endswith("age"):
+        units = r"$\log \,\rm yr$"
+    elif weighttype.endswith("mass"):
+        units = r"$\log \,\rm M_\odot$"
+    elif weighttype.endswith("light"):
+        units = r"$\log \,\rm erg\, s^{-1}$"
+
+    cond_nolines = df_ages["ngas_input"] == 0
+    cond_lines = df_ages["ngas_input"] > 0
+
+    axs[cc].axhline(df_ages.loc[cond_nolines, f"{colname} (input)"].values, color=colour_input, ls="--", label=f"{weighttype} (input)")
+    axs[cc].axhline(df_ages.loc[cond_nolines, f"{colname} (regularised)"].values, color=colour_regul, label=f"{weighttype} (regularised, no AGN)")
+    axs[cc].axhline(df_ages.loc[cond_nolines, f"{colname} (MC mean)"].values, color=colour_mc, label=f"{weighttype} (MC, no AGN)")
+    axs[cc].axhspan(ymin=df_ages.loc[cond_nolines, f"{colname} (MC mean)"].values - df_ages.loc[cond_nolines, f"{colname} (MC error)"].values, 
+               ymax=df_ages.loc[cond_nolines, f"{colname} (MC mean)"].values + df_ages.loc[cond_nolines, f"{colname} (MC error)"].values, 
+               color=colour_mc, alpha=0.2)
+
+    axs[cc].plot(df_ages.loc[cond_lines, "ngas_input"].values, df_ages.loc[cond_lines, f"{colname} (regularised)"].values, "o", alpha=1.0, color=colour_regul, label=f"{weighttype} (regul)")
+    axs[cc].errorbar(x=df_ages.loc[cond_lines, "ngas_input"].values, 
+                y=df_ages.loc[cond_lines, f"{colname} (MC mean)"], 
+                yerr=df_ages.loc[cond_lines, f"{colname} (MC error)"], 
+                linestyle="none", marker="D", alpha=1.0, color=colour_mc, label=f"{weighttype} (MC)")
+
+    # Decorations 
+    axs[cc].legend(loc="center left", bbox_to_anchor=[1.05, 0.5], fontsize="x-small")
+    axs[cc].grid()
+    axs[cc].set_xlabel(r"Number of emission line components in input")
+    axs[cc].set_ylabel(f"{weighttype} ({units})")
+if savefigs:
+    pp.savefig(fig, bbox_inches="tight")
+
+if savefigs:
+    pp.close()

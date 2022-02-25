@@ -38,11 +38,15 @@ spec, spec_err, lambda_vals_A = create_mock_spectrum(
 
 
 # run ppxf
-pp_agn = run_ppxf(spec=spec, spec_err=spec_err, lambda_vals_A=lambda_vals_A,
+pp = run_ppxf(spec=spec, spec_err=spec_err, lambda_vals_A=lambda_vals_A,
             isochrones=isochrones,
             z=z, fit_gas=True, ngascomponents=1,
             fit_agn_cont=True,
             reddening=1.0, mdegree=-1,
             regularisation_method="fixed", regul_fixed=100,
             plotit=True)
+
+# Need to figure out how/why the weights are weird 
+# Is it because the weights correspond to the spectrum BEFORE the extinction
+# is applied?
 

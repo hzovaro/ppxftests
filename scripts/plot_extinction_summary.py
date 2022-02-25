@@ -24,13 +24,14 @@ For the sample as a whole, plot
 
 """
 
-data_path = "/priv/meggs3/u5708159/ppxftests/extinction/"
-fig_path = "/priv/meggs3/u5708159/ppxftests/figs/extinction/"
+data_path = "/priv/meggs3/u5708159/ppxftests/ext_and_agn/"
+fig_path = "/priv/meggs3/u5708159/ppxftests/figs/ext_and_agn/"
 
 ###############################################################################
 # Settings
 ###############################################################################
 savefigs = True
+debug = False
 
 isochrones = "Padova"
 
@@ -42,19 +43,21 @@ gal = int(sys.argv[1])
 # True == plot the results from the fits w/ the 4th-order polynomial; 
 # False == plot the results from the fit w/ the extinction curve 
 mpoly = False  
-fit_agn_cont = False
 
-df_fname = f"ga{gal}_ext_agncontfit={'true' if fit_agn_cont else 'false'}_{'mpoly' if mpoly else 'ext'}.hd5"
-df = pd.read_hdf(os.path.join(data_path, df_fname))
+if not debug:
+    df_fname = f"ga{gal:004d}_{'mpoly' if mpoly else 'ext'}.hd5"
+else:
+    df_fname = f"ga{gal:004d}_DEBUG.hd5"
+df = pd.read_hdf(os.path.join(data_path, df_fname), key="ext_and_agn")
 
-x_AGN_vals = df["x_AGN"].unique()
-alpha_nu_vals = df["alpha_nu"].unique()
+x_AGN_vals = df["x_AGN (input)"].unique()
+alpha_nu_vals = df["alpha_nu (input)"].unique()
 A_V_vals = df["A_V (input)"].unique()
 
 # Multi-page pdfs
 if savefigs:
-    pp_sfh = PdfPages(os.path.join(fig_path, f"ga{gal}_ext_agncontfit={'true' if fit_agn_cont else 'false'}_sfhs_{'mpoly' if mpoly else 'ext'}.pdf"))
-    pp_meas = PdfPages(os.path.join(fig_path, f"ga{gal}_ext_agncontfit={'true' if fit_agn_cont else 'false'}_meas_{'mpoly' if mpoly else 'ext'}.pdf"))
+    pp_sfh = PdfPages(os.path.join(fig_path, f"ga{gal:004d}_sfhs_{'mpoly' if mpoly else 'ext'}.pdf"))
+    pp_meas = PdfPages(os.path.join(fig_path, f"ga{gal:004d}_meas_{'mpoly' if mpoly else 'ext'}.pdf"))
 
 ###############################################################################
 # Summary plot
@@ -65,16 +68,21 @@ _, _, metallicities, ages = load_ssp_templates(isochrones)
 
 # For each combination of alpha_nu, x_AGN, make this plot
 for alpha_nu, x_AGN, A_V in product(alpha_nu_vals, x_AGN_vals, A_V_vals):
+    print(f"Processing parameter combination alpha_nu = {alpha_nu:.1f}, x_AGN = {x_AGN:.1f}, A_V = {A_V:.1f}...")
     # IF both are NaN, then do NOT add an AGN continuum
     if np.isnan(x_AGN) and np.isnan(alpha_nu):
         title_str = f"ga{gal:004} (no AGN continuum added)" + r" $(A_V = %.2f)$" % A_V
-        cond = np.isnan(df["x_AGN"]) & np.isnan(df["alpha_nu"]) & (df["A_V (input)"] == A_V)
+        cond = np.isnan(df["x_AGN (input)"]) & np.isnan(df["alpha_nu (input)"]) & (df["A_V (input)"] == A_V)
     elif np.isnan(x_AGN) or np.isnan(alpha_nu):
         continue
     else:
         title_str = f"ga{gal:004} " + r"($\alpha_\nu = %.2f, \, x_{\rm AGN} = %.2f,\,A_V = %.2f$)" % (alpha_nu, x_AGN, A_V)
-        cond = (df["x_AGN"] == x_AGN) & (df["alpha_nu"] == alpha_nu) & (df["A_V (input)"] == A_V)
+        cond = (df["x_AGN (input)"] == x_AGN) & (df["alpha_nu (input)"] == alpha_nu) & (df["A_V (input)"] == A_V)
 
+    if not np.any(cond):
+        print("Row missing from DataFrame! Skipping...")
+        continue
+  
     #//////////////////////////////////////////////////////////////////////////////
     # Plot the SFH
     #//////////////////////////////////////////////////////////////////////////////
@@ -108,7 +116,7 @@ for alpha_nu, x_AGN, A_V in product(alpha_nu_vals, x_AGN_vals, A_V_vals):
     # Plot the mean mass- and light-weighted age vs. age threshold
     # expressed as an ERROR
     #//////////////////////////////////////////////////////////////////////////////
-    fig, axs = plt.subplots(nrows=2, ncols=5 if fit_agn_cont else 4, figsize=(20, 8))
+    fig, axs = plt.subplots(nrows=2, ncols=5, figsize=(22, 8))
     fig.subplots_adjust(left=0.025, right=1 - 0.025, top=1 - 0.05, bottom=0.025)
     fig.suptitle(title_str)
 
@@ -136,7 +144,7 @@ for alpha_nu, x_AGN, A_V in product(alpha_nu_vals, x_AGN_vals, A_V_vals):
         # Decorations  
         axs[0][cc].axvspan(ages[1], ages[np.argwhere(np.isfinite(df.loc[cond, f"{colname} (input)"].values.item()))[0][0]], color="grey", alpha=0.2)  
         axs[0][cc].set_xscale("log")
-        axs[0][cc].legend(loc="best", fontsize="x-small")
+        axs[0][cc].legend(loc="upper left", fontsize="x-small")
         axs[0][cc].set_xlabel("Age threshold (yr)")
         axs[0][cc].set_ylabel(f"{weighttype} (log yr)" if weighttype.endswith("age") else f"{weighttype} " + r"($M_\odot$)")
         axs[0][cc].set_xlim([ages[0], ages[-1]])
@@ -159,7 +167,7 @@ for alpha_nu, x_AGN, A_V in product(alpha_nu_vals, x_AGN_vals, A_V_vals):
         axs[1][cc].axvspan(ages[1], ages[np.argwhere(np.isfinite(log_y_input))[0][0]], color="grey", alpha=0.2)
         axs[1][cc].axhline(0, color="k")   
         axs[1][cc].set_xscale("log")
-        axs[1][cc].legend(loc="best", fontsize="x-small")
+        axs[1][cc].legend(loc="upper left", fontsize="x-small")
         axs[1][cc].set_xlabel("Age threshold (yr)")
         axs[1][cc].set_ylabel(r"$\Delta$" + f" {colname} error (log yr)")
         axs[1][cc].set_xlim([ages[0], ages[-1]])
@@ -169,36 +177,40 @@ for alpha_nu, x_AGN, A_V in product(alpha_nu_vals, x_AGN_vals, A_V_vals):
     #//////////////////////////////////////////////////////////////////////////////
     # AGN template weights 
     #//////////////////////////////////////////////////////////////////////////////
-    if fit_agn_cont:
-        alpha_nu_vals_ppxf = df.loc[cond, "ppxf alpha_nu_vals"].values.item()[0]
-        w_ppxf_regul = df.loc[cond, "AGN template weights (regularised)"].values.item()[0]
-        x_AGN_fit_vals_regul = (1 / w_ppxf_regul - 1)**(-1)
-        w_ppxf_mc = df.loc[cond, "AGN template weights (MC mean)"].values.item()[0]
-        w_ppxf_mc_err = df.loc[cond, "AGN template weights (MC error)"].values.item()[0]
-        x_AGN_fit_vals_mc = (1 / w_ppxf_mc - 1)**(-1)
-        x_AGN_fit_vals_mc_err = w_ppxf_mc_err / (1 - w_ppxf_mc)**2
+    alpha_nu_vals_ppxf = df.loc[cond, "ppxf alpha_nu_vals"].values.item()[0]
+    x_AGN_fit_vals_regul = df.loc[cond, "x_AGN (individual, regularised)"].values.item()
+    x_AGN_fit_vals_mc = df.loc[cond, "x_AGN (individual, MC mean)"].values.item()
+    x_AGN_fit_vals_mc_err = df.loc[cond, "x_AGN (individual, MC error)"].values.item()
 
-        axs[0][-1].plot(alpha_nu_vals_ppxf, x_AGN_fit_vals_regul, "bo", label="AGN template weights (regularised)")
-        axs[0][-1].errorbar(x=alpha_nu_vals_ppxf, y=x_AGN_fit_vals_mc, yerr=x_AGN_fit_vals_mc_err, 
-                    marker="o", color="cornflowerblue", linestyle="none", label="AGN template weights (MC)")
-        if ~np.isnan(alpha_nu):
-            axs[0][-1].axvline(alpha_nu, color="black", label=r"$\alpha_\nu$ (input)")
-            axs[0][-1].axhline(x_AGN, color="black", label=r"$x_{\rm AGN}$ (input)")
-            axs[0][-1].axhline(np.nansum(x_AGN_fit_vals_regul), ls="--", color="purple", label=r"Total $x_{\rm AGN}$ (regularised)")
-            axs[0][-1].axhline(np.nansum(x_AGN_fit_vals_mc), ls="--", color="cornflowerblue", label=r"Total $x_{\rm AGN}$ (MC)")
-            axs[0][-1].axhspan(ymin=np.nansum(x_AGN_fit_vals_mc) - np.sqrt(np.nansum(x_AGN_fit_vals_mc_err**2)),
-                       ymax=np.nansum(x_AGN_fit_vals_mc) + np.sqrt(np.nansum(x_AGN_fit_vals_mc_err**2)), 
-                       alpha=0.2, color="cornflowerblue")
-        else:
-            axs[0][-1].axhline(0, color="black", label=r"$x_{\rm AGN}$ (input)")
-        axs[0][-1].legend(fontsize="x-small", loc="best")
-        axs[0][-1].set_xticks(alpha_nu_vals_ppxf)
-        axs[0][-1].set_xlabel(r"$\alpha_\nu$")
-        axs[0][-1].set_ylabel(r"$x_{\rm AGN}$")
-        axs[0][-1].grid()
-        axs[0][-1].set_xlim([0, 3.0])
+    axs[0][-1].plot(alpha_nu_vals_ppxf, x_AGN_fit_vals_regul, "bo", label="AGN template weights (regularised)")
+    axs[0][-1].errorbar(x=alpha_nu_vals_ppxf, y=x_AGN_fit_vals_mc, yerr=x_AGN_fit_vals_mc_err, 
+                marker="o", color="cornflowerblue", linestyle="none", label="AGN template weights (MC)")
+    if ~np.isnan(alpha_nu):
+        axs[0][-1].axvline(alpha_nu, color="black", label=r"$\alpha_\nu$ (input)")
+        axs[0][-1].axhline(x_AGN, color="black", label=r"$x_{\rm AGN}$ (input)")
+        axs[0][-1].axhline(np.nansum(x_AGN_fit_vals_regul), ls="--", color="purple", label=r"Total $x_{\rm AGN}$ (regularised)")
+        axs[0][-1].axhline(np.nansum(x_AGN_fit_vals_mc), ls="--", color="cornflowerblue", label=r"Total $x_{\rm AGN}$ (MC)")
+        axs[0][-1].axhspan(ymin=np.nansum(x_AGN_fit_vals_mc) - np.sqrt(np.nansum(x_AGN_fit_vals_mc_err**2)),
+                   ymax=np.nansum(x_AGN_fit_vals_mc) + np.sqrt(np.nansum(x_AGN_fit_vals_mc_err**2)), 
+                   alpha=0.2, color="cornflowerblue")
+    else:
+        axs[0][-1].axhline(0, color="black", label=r"$x_{\rm AGN}$ (input)")
+    axs[0][-1].legend(fontsize="x-small", loc="best")
+    axs[0][-1].set_xticks(alpha_nu_vals_ppxf)
+    axs[0][-1].set_xlabel(r"$\alpha_\nu$")
+    axs[0][-1].set_ylabel(r"$x_{\rm AGN}$")
+    axs[0][-1].grid()
+    axs[0][-1].set_xlim([0, 3.0])
 
-        axs[1][-1].set_visible(False)
+    axs[1][-1].set_visible(False)
+
+    #//////////////////////////////////////////////////////////////////////////////
+    # Add as text the A_V 
+    #//////////////////////////////////////////////////////////////////////////////
+    s = r"Input $A_V = %.2f$" % df.loc[cond, "A_V (input)"].values[0] + "\n" +\
+        r"Regularised $A_V = %.2f$" % df.loc[cond, "A_V (regularised)"].values[0] + "\n" +\
+        r"MC $A_V = %.2f \pm %.2f$" % (df.loc[cond, "A_V (MC mean)"].values[0], df.loc[cond, "A_V (MC error)"].values[0])
+    axs[0][0].text(s=s, x=0.95, y=0.05, transform=axs[0][0].transAxes, verticalalignment="bottom", horizontalalignment="right")
 
     # Save figures
     if savefigs:
@@ -207,7 +219,6 @@ for alpha_nu, x_AGN, A_V in product(alpha_nu_vals, x_AGN_vals, A_V_vals):
     if not savefigs:
         Tracer()()
     plt.close("all")
-
 
 # Finish writing to file
 if savefigs:

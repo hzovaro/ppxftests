@@ -60,15 +60,19 @@ _, _, metallicities, ages = load_ssp_templates(isochrones)
 
 
 # For each combination of alpha_nu, x_AGN, make this plot
-for ngascomponents in ngascomponents_vals:
-    print(f"Processing parameter combination ngascomponents = {ngascomponents:.1f}...")
-    # IF both are NaN, then do NOT add an AGN continuum
+# for ngascomponents in ngascomponents_vals:
+for rr in df.index.values:
+    # print(f"Processing parameter combination ngascomponents = {ngascomponents:.1f}...")
+    print(f"Processing row {rr}...")
+    cond = df.index == rr
+    ngascomponents = df.loc[cond, "Number of emission line components in fit"].values[0]
+    
     if np.isnan(ngascomponents):
         title_str = f"ga{gal:004} (no emission lines)"
-        cond = np.isnan(df["Number of emission line components in fit"])
+        # cond = np.isnan(df["Number of emission line components in fit"])
     else:
         title_str = f"ga{gal:004} " + r"(ngascomponents = %d)" % (ngascomponents)
-        cond = df["Number of emission line components in fit"] == ngascomponents
+        # cond = df["Number of emission line components in fit"] == ngascomponents
 
     if not np.any(cond):
         print("Row missing from DataFrame! Skipping...")
