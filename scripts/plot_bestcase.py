@@ -66,63 +66,125 @@ for gal, df_fname in tqdm(zip(gals, df_fnames), total=len(gals)):
 ###############################################################################
 # Plot
 ###############################################################################
-if savefigs:
-    pp = PdfPages(os.path.join(fig_path, "mw_lw_ages.pdf"))
 for weighttype, marker in zip(["LW", "MW"], ["x", "D"]):
-
     for age in [1e8, 1e9]:
-        fig, axs = plt.subplots(nrows=2, ncols=1, figsize=(15, 10))
-        fig.subplots_adjust(hspace=0)
-        fig.suptitle(f"{weighttype} weighted age (<{age/1e6:.2f} Myr)")
+        fig, ax = plt.subplots(nrows=1, ncols=1, figsize=(7.5, 5))
+        ax.set_title(f"{weighttype} weighted age " + r"($\tau_{\rm cutoff} = %.0f \,\rm Myr$)" % (age / 1e6))
 
+        #//////////////////////////////////////////////////////////////////////
         # Axis 1: absolute values 
-        axs[0].errorbar(x=df_ages.index, 
+        #//////////////////////////////////////////////////////////////////////
+        ax.errorbar(x=df_ages.index, 
                             y=df_ages[f"{weighttype} age (<{age/1e6:.2f} Myr) (input)"],
                             marker=marker, mfc="lightblue", mec="blue", ecolor="lightblue", linestyle="none",
                             label="Input")
-        axs[0].errorbar(x=df_ages.index, 
+        ax.errorbar(x=df_ages.index, 
                             y=df_ages[f"{weighttype} age (<{age/1e6:.2f} Myr) (regularised)"],
                             marker=marker, mfc="lightgreen", mec="green", ecolor="green", linestyle="none", markersize=3.5,
                             label="Regularised fit")
-        axs[0].errorbar(x=df_ages.index, 
+        ax.errorbar(x=df_ages.index, 
                             y=df_ages[f"{weighttype} age (<{age/1e6:.2f} Myr) (MC mean)"],
                             yerr=df_ages[f"{weighttype} age (<{age/1e6:.2f} Myr) (MC error)"],
                             marker=marker, mfc="red", mec="red", ecolor="red", alpha=0.5, linewidth=0.5, linestyle="none", markersize=3.5,
                             label="MC simulations")
+        # Decorations
+        ax.set_ylabel(f"{weighttype} weighted age (log Myr)")
+        ax.set_ylim([6, 10.5])
+        ax.grid()
+        ax.autoscale(axis="x", tight=True, enable=True)
+        ax.legend(fontsize="small")
+        ax.set_xlabel("Galaxy ID")
 
+        if savefigs:
+            fig.savefig(os.path.join(fig_path, f"{weighttype}_ages_bestcase_tau={age:.0e}.pdf"), bbox_inches="tight", format="pdf")
+
+        #//////////////////////////////////////////////////////////////////////
         # Axis 2: relative values 
-        axs[1].axhline(0, color="black")
-        axs[1].errorbar(x=df_ages.index, 
+        #//////////////////////////////////////////////////////////////////////
+        fig, ax = plt.subplots(nrows=1, ncols=1, figsize=(7.5, 5))
+        ax.set_title(f"{weighttype} weighted age error " + r"($\tau_{\rm cutoff} = %.0f \,\rm Myr$)" % (age / 1e6))
+
+        ax.axhline(0, color="black")
+        ax.errorbar(x=df_ages.index, 
                             y=df_ages[f"{weighttype} age (<{age/1e6:.2f} Myr) (regularised)"] - df_ages[f"{weighttype} age (<{age/1e6:.2f} Myr) (input)"],
                             marker=marker, mfc="lightgreen", mec="green", ecolor="green", linestyle="none", markersize=3.5,
                             label="Regularised fit")
-        axs[1].errorbar(x=df_ages.index, 
+        ax.errorbar(x=df_ages.index, 
                             y=df_ages[f"{weighttype} age (<{age/1e6:.2f} Myr) (MC mean)"] - df_ages[f"{weighttype} age (<{age/1e6:.2f} Myr) (input)"],
                             yerr=df_ages[f"{weighttype} age (<{age/1e6:.2f} Myr) (MC error)"],
                             marker=marker, mfc="red", mec="red", ecolor="red", alpha=0.5, linewidth=0.5, linestyle="none", markersize=3.5,
                             label="MC simulations")
         # Decorations
-        # axs[0].text(s=age_range_strs[aa], x=0.05, y=0.95, transform=axs[0].transAxes, horizontalalignment="left", verticalalignment="top")
-        axs[0].set_ylabel(f"{weighttype} weighted age (log Myr)")
-        axs[0].set_ylim([6, 10.5])
-        axs[1].set_ylim([-1, 1])
-        axs[1].set_ylabel(f"{weighttype} weighted age error (log Myr)")
-        axs[1].axhline(-0.1, ls="--", lw=0.5, color="black")
-        axs[1].axhline(+0.1, ls="--", lw=0.5, color="black")
-
-        # Decorations
-        for ax in axs.flat:
-            ax.grid()
-            ax.autoscale(axis="x", tight=True, enable=True)
-        axs[0].legend(fontsize="small")
-        axs[1].set_xlabel("Galaxy ID")
+        # ax.text(s=age_range_strs[aa], x=0.05, y=0.95, transform=ax.transAxes, horizontalalignment="left", verticalalignment="top")
+        ax.set_ylim([-1, 1])
+        ax.set_ylabel(f"{weighttype} weighted age error (log Myr)")
+        ax.axhline(-0.1, ls="--", lw=0.5, color="black")
+        ax.axhline(+0.1, ls="--", lw=0.5, color="black")
+        ax.grid()
+        ax.autoscale(axis="x", tight=True, enable=True)
+        ax.legend(fontsize="small")
+        ax.set_xlabel("Galaxy ID")
 
         if savefigs:
-            pp.savefig(fig, bbox_inches="tight")
+            fig.savefig(os.path.join(fig_path, f"{weighttype}_ages_error_bestcase_tau={age:.0e}.pdf"), bbox_inches="tight", format="pdf")
 
-if savefigs:
-    pp.close()
+        #//////////////////////////////////////////////////////////////////////
+        # Histograms
+        #//////////////////////////////////////////////////////////////////////
+        # Absolute values
+        fig, ax = plt.subplots(nrows=1, ncols=1, figsize=(7.5, 5))
+        xmin = np.nanmin(df_ages[[f"{weighttype} age (<{age/1e6:.2f} Myr) (input)",
+                                  f"{weighttype} age (<{age/1e6:.2f} Myr) (regularised)",
+                                  f"{weighttype} age (<{age/1e6:.2f} Myr) (MC mean)"]].values)
+        xmax = np.nanmax(df_ages[[f"{weighttype} age (<{age/1e6:.2f} Myr) (input)",
+                                  f"{weighttype} age (<{age/1e6:.2f} Myr) (regularised)",
+                                  f"{weighttype} age (<{age/1e6:.2f} Myr) (MC mean)"]].values)
+        ax.hist(df_ages[f"{weighttype} age (<{age/1e6:.2f} Myr) (input)"], 
+                range=(xmin, xmax), bins=20, histtype="stepfilled", color="lightblue", edgecolor="blue", alpha=0.4,
+                label="Input")
+        ax.hist(df_ages[f"{weighttype} age (<{age/1e6:.2f} Myr) (regularised)"], 
+                range=(xmin, xmax), bins=20, histtype="stepfilled", color="green", edgecolor="green", alpha=0.4,
+                label="Regularised fit")
+        ax.hist(df_ages[f"{weighttype} age (<{age/1e6:.2f} Myr) (MC mean)"], 
+                range=(xmin, xmax), bins=20, histtype="stepfilled", color="red", edgecolor="red", alpha=0.4,
+                label="MC simulations")
+        ax.grid()
+        ax.legend(fontsize="small")
+        ax.set_ylabel(r"$N$")
+        ax.set_xlabel(f"{weighttype} weighted age (log Myr)")
+        ax.set_title(f"{weighttype} weighted age " + r"($\tau_{\rm cutoff} = %.0f \,\rm Myr$)" % (age / 1e6))
 
+        if savefigs:
+            fig.savefig(os.path.join(fig_path, f"{weighttype}_ages_bestcase_hist_tau={age:.0e}.pdf"), bbox_inches="tight", format="pdf")
 
+        # Relative values
+        fig, ax = plt.subplots(nrows=1, ncols=1, figsize=(7.5, 5))
+        xmin_tmp = np.nanmin([
+                    np.nanmin(df_ages[f"{weighttype} age (<{age/1e6:.2f} Myr) (regularised)"] - df_ages[f"{weighttype} age (<{age/1e6:.2f} Myr) (input)"]),
+                    np.nanmin(df_ages[f"{weighttype} age (<{age/1e6:.2f} Myr) (MC mean)"] - df_ages[f"{weighttype} age (<{age/1e6:.2f} Myr) (input)"])
+                    ])
+        xmax_tmp = np.nanmax([
+                    np.nanmax(df_ages[f"{weighttype} age (<{age/1e6:.2f} Myr) (regularised)"] - df_ages[f"{weighttype} age (<{age/1e6:.2f} Myr) (input)"]),
+                    np.nanmax(df_ages[f"{weighttype} age (<{age/1e6:.2f} Myr) (MC mean)"] - df_ages[f"{weighttype} age (<{age/1e6:.2f} Myr) (input)"])
+                    ])
+        xmax = max(np.abs(xmin_tmp), np.abs(xmax_tmp))
+        xmin = -xmax
+        ax.hist(df_ages[f"{weighttype} age (<{age/1e6:.2f} Myr) (regularised)"] - df_ages[f"{weighttype} age (<{age/1e6:.2f} Myr) (input)"], 
+                range=(xmin, xmax), bins=20, histtype="stepfilled", color="green", edgecolor="green", alpha=0.4,
+                label="Regularised fit")
+        ax.hist(df_ages[f"{weighttype} age (<{age/1e6:.2f} Myr) (MC mean)"] - df_ages[f"{weighttype} age (<{age/1e6:.2f} Myr) (input)"], 
+                range=(xmin, xmax), bins=20, histtype="stepfilled", color="red", edgecolor="red", alpha=0.4,
+                label="MC simulations")
+        ax.grid()
+        ax.legend(fontsize="small")
+        ax.axvline(0, color="k")
+        ax.axvline(-0.1, ls="--", lw=0.5, color="black")
+        ax.axvline(+0.1, ls="--", lw=0.5, color="black")
+        ax.set_ylabel(r"$N$")
+        ax.set_xlabel(f"{weighttype} weighted age error (log Myr)")
+        ax.set_title(f"{weighttype} weighted age error " + r"($\tau_{\rm cutoff} = %.0f \,\rm Myr$)" % (age / 1e6))
+
+        if savefigs:
+            fig.savefig(os.path.join(fig_path, f"{weighttype}_ages_bestcase_hist_err_tau={age:.0e}.pdf"), bbox_inches="tight", format="pdf")
 
 
