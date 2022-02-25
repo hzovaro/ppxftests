@@ -62,7 +62,8 @@ def load_sfh(gal, isochrones="Padova", plotit=False):
     assert type(gal) == int, f"gal must be an integer!"
     abspath = __file__.split("/sfhutils.py")[0]
     fname = os.path.join(abspath, "sim_galaxies", "SFHs", f"SFH_ga{gal:04}.dat")
-    assert os.path.exists(fname), f"SFH file {fname} not found!"
+    if not os.path.exists(fname):
+        raise FileNotFoundError(f"Galaxy {gal} not found!") 
 
     # Load the file 
     f = open(fname)
@@ -182,7 +183,8 @@ def convert_mass_weights_to_light_weights(sfh_mw, isochrones,
 ###########################################################################
 def compute_cumulative_mass(sfh_mw, isochrones,
                  age_thresh_lower=None,
-                 age_thresh_upper=None):
+                 age_thresh_upper=None,
+                 log_result=True):
     """
     Given a SFH, compute the total mass in a specified age range.
     """
@@ -199,14 +201,20 @@ def compute_cumulative_mass(sfh_mw, isochrones,
     age_thresh_lower_idx = np.nanargmin(np.abs(ages - age_thresh_lower))
     age_thresh_upper_idx = np.nanargmin(np.abs(ages - age_thresh_upper))
 
-    logM = np.log10(np.nansum(sfh_mw_1D[age_thresh_lower_idx:age_thresh_upper_idx]))
-
-    return logM
+    if log_result:
+        logM = np.log10(np.nansum(sfh_mw_1D[age_thresh_lower_idx:age_thresh_upper_idx]))
+        if np.isinf(logM):
+            logM = np.nan
+        return logM
+    else:
+        M = np.nansum(sfh_mw_1D[age_thresh_lower_idx:age_thresh_upper_idx])
+        return M
 
 ###########################################################################
 def compute_cumulative_light(sfh_lw, isochrones,
                  age_thresh_lower=None,
-                 age_thresh_upper=None):
+                 age_thresh_upper=None,
+                 log_result=True):
     """
     Given a SFH, compute the total light in a specified age range.
     """
@@ -223,9 +231,14 @@ def compute_cumulative_light(sfh_lw, isochrones,
     age_thresh_lower_idx = np.nanargmin(np.abs(ages - age_thresh_lower))
     age_thresh_upper_idx = np.nanargmin(np.abs(ages - age_thresh_upper))
 
-    logL = np.log10(np.nansum(sfh_lw_1D[age_thresh_lower_idx:age_thresh_upper_idx]))
-
-    return logL
+    if log_result:
+        logL = np.log10(np.nansum(sfh_lw_1D[age_thresh_lower_idx:age_thresh_upper_idx]))
+        if np.isinf(logL):
+            logL = np.nan
+        return logL
+    else:
+        L = np.nansum(sfh_lw_1D[age_thresh_lower_idx:age_thresh_upper_idx])
+        return L
 
 ###########################################################################
 def compute_mw_age(sfh_mw, isochrones,
