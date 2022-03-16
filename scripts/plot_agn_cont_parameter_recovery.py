@@ -7,7 +7,8 @@ from ppxftests.ssputils import load_ssp_templates
 
 import matplotlib
 import matplotlib.pyplot as plt
-from matplotlib.backends.backend_pdf import PdfPages
+from matplotlib import rcParams
+rcParams["font.size"] = 14
 plt.ion()
 # plt.close("all")
 
@@ -151,7 +152,7 @@ for gal in gals:
     #//////////////////////////////////////////////////////////////////////////////
     fig, axs = plt.subplots(nrows=2, ncols=3, sharex=True, sharey=True, figsize=(12, 7))
     fig.subplots_adjust(hspace=0, wspace=0)
-    fig.suptitle(f"ga{gal:004}", y=0.9)
+    axs[0][1].set_title(f"ga{gal:004}")
 
     # Colourmaps
     cmap_alpha_nu = plt.cm.get_cmap("cool", len(alpha_nu_vals))
@@ -205,7 +206,7 @@ for gal in gals:
     #//////////////////////////////////////////////////////////////////////////////
     fig, axs = plt.subplots(nrows=2, ncols=3, sharex=True, sharey=True, figsize=(12, 7))
     fig.subplots_adjust(hspace=0, wspace=0)
-    fig.suptitle(f"ga{gal:004}", y=0.9)
+    axs[0][1].set_title(f"ga{gal:004}")
 
     # Colourmaps
     cmap_alpha_nu = plt.cm.get_cmap("cool", len(alpha_nu_vals))
@@ -265,27 +266,13 @@ for gal in gals:
     #//////////////////////////////////////////////////////////////////////////////
     fig, axs = plt.subplots(nrows=2, ncols=3, sharex=True, sharey=True, figsize=(12, 7))
     fig.subplots_adjust(hspace=0, wspace=0)
-    fig.suptitle(f"ga{gal:004}", y=0.9)
+    axs[0][1].set_title(f"ga{gal:004}")
 
     # Colourmaps
     cmap_alpha_nu = plt.cm.get_cmap("cool", len(alpha_nu_vals))
 
-    # Case: no AGN continuum
-    ax = axs.flat[0]
-    ax.text(s=r"No AGN continuum", x=0.95, y=0.95, transform=ax.transAxes, verticalalignment="top", horizontalalignment="right", zorder=99999)
-    cond_A_V = np.isnan(df["A_V (input)"])
-    cond_alpha_nu = np.isnan(df["alpha_nu (input)"])
-    cond = cond_A_V & cond_alpha_nu
-    # MC
-    ax.errorbar(x=df.loc[cond, "x_AGN (input)"], y=df.loc[cond, "x_AGN (input)"] - df.loc[cond, "x_AGN (total, MC mean)"], yerr=df.loc[cond, "x_AGN (total, MC error)"],
-                    marker="D", linestyle="none", markersize=5, markeredgecolor="black", color="black")
-    # Regul
-    ax.scatter(x=df.loc[cond, "x_AGN (input)"], y=df.loc[cond, "x_AGN (input)"] - df.loc[cond, "x_AGN (total, regularised)"],
-               marker="o", edgecolors="grey", color="black",
-               label=r"Regularised fit: $\alpha_\nu = %.1f$" % alpha_nu, zorder=9999)
-
     # Case: AGN continuum
-    for ax, A_V in zip(axs.flat[1:], A_V_vals):
+    for ax, A_V in zip(axs.flat, A_V_vals):
         ax.text(s=r"$A_V = %.1f$" % A_V, x=0.95, y=0.95, transform=ax.transAxes, verticalalignment="top", horizontalalignment="right", zorder=99999)
         cond_A_V = df["A_V (input)"] == A_V
 
@@ -319,7 +306,7 @@ for gal in gals:
     #//////////////////////////////////////////////////////////////////////////////
     fig, axs = plt.subplots(nrows=2, ncols=3, sharex=True, sharey=True, figsize=(12, 7))
     fig.subplots_adjust(hspace=0, wspace=0)
-    fig.suptitle(f"ga{gal:004}", y=0.9)
+    axs[0][1].set_title(f"ga{gal:004}")
 
     # Colourmaps
     cmap_alpha_nu = plt.cm.get_cmap("cool", len(alpha_nu_vals))
