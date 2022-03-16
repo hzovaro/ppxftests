@@ -99,11 +99,11 @@ def load_sfh(gal, isochrones="Padova", plotit=False):
     # Plot the SFH
     if plotit:
         plot_sfh_mass_weighted(sfh_mw, ages, metallicities)
-        plt.gcf().get_axes()[0].set_title(f"Galaxy {gal:004} " + r"- $M_{\rm tot} = %.4e\,\rm M_\odot$" % M_tot)
+        plt.gcf().get_axes()[0].set_title(f"ga{gal:004} " + r"- $M_{\rm tot} = %.4e\,\rm M_\odot$" % M_tot)
         plot_sfh_light_weighted(sfh_lw, ages, metallicities)
-        plt.gcf().get_axes()[0].set_title(f"Galaxy {gal:004} " + r"- $M_{\rm tot} = %.4e\,\rm M_\odot$" % M_tot)
+        plt.gcf().get_axes()[0].set_title(f"ga{gal:004} " + r"- $M_{\rm tot} = %.4e\,\rm M_\odot$" % M_tot)
         plot_sfr(sfr_avg, ages, metallicities)
-        plt.gcf().get_axes()[0].set_title(f"Galaxy {gal:004} " + r"- $M_{\rm tot} = %.4e\,\rm M_\odot$" % M_tot)
+        plt.gcf().get_axes()[0].set_title(f"ga{gal:004} " + r"- $M_{\rm tot} = %.4e\,\rm M_\odot$" % M_tot)
 
     return sfh_mw, sfh_lw, sfr_avg, sigma_star_kms
 
