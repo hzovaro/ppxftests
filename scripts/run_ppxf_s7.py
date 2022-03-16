@@ -66,6 +66,12 @@ def ppxf_helper(args):
     spec_noise[0] = -9999
     spec_noise[-1] = -9999
 
+    # Make sure there are no NaNs in the input!
+    nan_mask = np.isnan(spec_noise)
+    nan_mask |= np.isnan(spec_err)
+    spec_noise[nan_mask] = -9999
+    spec_err[nan_mask] = -9999
+
     # Run ppxf
     pp = run_ppxf(spec=spec_noise, spec_err=spec_err, lambda_vals_A=lambda_vals_rest_A,
                   isochrones="Padova",
@@ -87,6 +93,7 @@ else:
     df = pd.DataFrame(dtype="object")
     gals_to_run = gals
 
+Tracer()()
 for gal in gals_to_run:
     print("###################################################################")
     print(f"Now running on {gal}...")
