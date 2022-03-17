@@ -13,7 +13,7 @@ import matplotlib
 import matplotlib.pyplot as plt
 from matplotlib.backends.backend_pdf import PdfPages
 from matplotlib import rcParams
-rcParams["font.size"] = 10
+rcParams["font.size"] = 14
 plt.ion()
 plt.close("all")
 
@@ -61,7 +61,9 @@ for gal, df_fname in tqdm(zip(gals, df_fnames), total=len(gals)):
                 df_gal[f"Mass-weighted age vs. age cutoff ({col})"].values.item()[0][age_idx - 1]
             df_ages.loc[gal, f"LW age (<{age/1e6:.2f} Myr) ({col})"] =\
                 df_gal[f"Light-weighted age vs. age cutoff ({col})"].values.item()[0][age_idx - 1]
-
+            # Also compute the cumulative light fraction
+            df_ages.loc[gal, f"Cumulative light (<{age/1e6:.2f} Myr) ({col})"] =\
+                df_gal[f"Cumulative light vs. age cutoff ({col})"].values.item()[0][age_idx - 1] - df_gal[f"Cumulative light vs. age cutoff ({col})"].values.item()[0][-1]
 
 ###############################################################################
 # Plot
@@ -74,19 +76,39 @@ for weighttype, marker in zip(["LW", "MW"], ["x", "D"]):
         #//////////////////////////////////////////////////////////////////////
         # Axis 1: absolute values 
         #//////////////////////////////////////////////////////////////////////
-        ax.errorbar(x=df_ages.index, 
-                            y=df_ages[f"{weighttype} age (<{age/1e6:.2f} Myr) (input)"],
+        cond_good_input = df_ages[f"Cumulative light (<{age/1e6:.2f} Myr) (input)"] > -2.5
+        cond_good_regul = df_ages[f"Cumulative light (<{age/1e6:.2f} Myr) (regularised)"] > -2.5
+        cond_good_MC = df_ages[f"Cumulative light (<{age/1e6:.2f} Myr) (MC mean)"] > -2.5
+        
+        # Reliable
+        ax.errorbar(x=df_ages.loc[cond_good_input].index, 
+                            y=df_ages.loc[cond_good_input, f"{weighttype} age (<{age/1e6:.2f} Myr) (input)"],
                             marker=marker, mfc="lightblue", mec="blue", ecolor="lightblue", linestyle="none",
                             label="Input")
-        ax.errorbar(x=df_ages.index, 
-                            y=df_ages[f"{weighttype} age (<{age/1e6:.2f} Myr) (regularised)"],
+        ax.errorbar(x=df_ages.loc[cond_good_regul].index, 
+                            y=df_ages.loc[cond_good_regul, f"{weighttype} age (<{age/1e6:.2f} Myr) (regularised)"],
                             marker=marker, mfc="lightgreen", mec="green", ecolor="green", linestyle="none", markersize=3.5,
                             label="Regularised fit")
-        ax.errorbar(x=df_ages.index, 
-                            y=df_ages[f"{weighttype} age (<{age/1e6:.2f} Myr) (MC mean)"],
-                            yerr=df_ages[f"{weighttype} age (<{age/1e6:.2f} Myr) (MC error)"],
+        ax.errorbar(x=df_ages.loc[cond_good_MC].index, 
+                            y=df_ages.loc[cond_good_MC, f"{weighttype} age (<{age/1e6:.2f} Myr) (MC mean)"],
+                            yerr=df_ages.loc[cond_good_MC, f"{weighttype} age (<{age/1e6:.2f} Myr) (MC error)"],
                             marker=marker, mfc="red", mec="red", ecolor="red", alpha=0.5, linewidth=0.5, linestyle="none", markersize=3.5,
                             label="MC simulations")
+        # Unreliable
+        ax.errorbar(x=df_ages.loc[~cond_good_input].index, 
+                            y=df_ages.loc[~cond_good_input, f"{weighttype} age (<{age/1e6:.2f} Myr) (input)"],
+                            marker=marker, mfc="lightgrey", mec="grey", ecolor="grey", linestyle="none",
+                            label=r"Input (cumulative light fraction $< -2.5$)")
+        ax.errorbar(x=df_ages.loc[~cond_good_regul].index, 
+                            y=df_ages.loc[~cond_good_regul, f"{weighttype} age (<{age/1e6:.2f} Myr) (regularised)"],
+                            marker=marker, mfc="lightgrey", mec="grey", ecolor="grey", linestyle="none", markersize=3.5,
+                            label="Regularised fit (unreliable)")
+        ax.errorbar(x=df_ages.loc[~cond_good_MC].index, 
+                            y=df_ages.loc[~cond_good_MC, f"{weighttype} age (<{age/1e6:.2f} Myr) (MC mean)"],
+                            yerr=df_ages.loc[~cond_good_MC, f"{weighttype} age (<{age/1e6:.2f} Myr) (MC error)"],
+                            marker=marker, mfc="lightgrey", mec="grey", ecolor="grey", alpha=0.5, linewidth=0.5, linestyle="none", markersize=3.5,
+                            label="MC simulations (unreliable)")
+
         # Decorations
         ax.set_ylabel(f"{weighttype} weighted age (log Myr)")
         ax.set_ylim([6, 10.5])
@@ -105,15 +127,26 @@ for weighttype, marker in zip(["LW", "MW"], ["x", "D"]):
         ax.set_title(f"{weighttype} weighted age error " + r"($\tau_{\rm cutoff} = %.0f \,\rm Myr$)" % (age / 1e6))
 
         ax.axhline(0, color="black")
-        ax.errorbar(x=df_ages.index, 
-                            y=df_ages[f"{weighttype} age (<{age/1e6:.2f} Myr) (regularised)"] - df_ages[f"{weighttype} age (<{age/1e6:.2f} Myr) (input)"],
+        ax.errorbar(x=df_ages.loc[cond_good_regul].index, 
+                            y=df_ages.loc[cond_good_regul, f"{weighttype} age (<{age/1e6:.2f} Myr) (regularised)"] - df_ages.loc[cond_good_regul, f"{weighttype} age (<{age/1e6:.2f} Myr) (input)"],
                             marker=marker, mfc="lightgreen", mec="green", ecolor="green", linestyle="none", markersize=3.5,
                             label="Regularised fit")
-        ax.errorbar(x=df_ages.index, 
-                            y=df_ages[f"{weighttype} age (<{age/1e6:.2f} Myr) (MC mean)"] - df_ages[f"{weighttype} age (<{age/1e6:.2f} Myr) (input)"],
-                            yerr=df_ages[f"{weighttype} age (<{age/1e6:.2f} Myr) (MC error)"],
+        ax.errorbar(x=df_ages.loc[cond_good_MC].index, 
+                            y=df_ages.loc[cond_good_MC, f"{weighttype} age (<{age/1e6:.2f} Myr) (MC mean)"] - df_ages.loc[cond_good_MC, f"{weighttype} age (<{age/1e6:.2f} Myr) (input)"],
+                            yerr=df_ages.loc[cond_good_MC, f"{weighttype} age (<{age/1e6:.2f} Myr) (MC error)"],
                             marker=marker, mfc="red", mec="red", ecolor="red", alpha=0.5, linewidth=0.5, linestyle="none", markersize=3.5,
                             label="MC simulations")
+
+        ax.errorbar(x=df_ages.loc[~cond_good_regul].index, 
+                            y=df_ages.loc[~cond_good_regul, f"{weighttype} age (<{age/1e6:.2f} Myr) (regularised)"] - df_ages.loc[~cond_good_regul, f"{weighttype} age (<{age/1e6:.2f} Myr) (input)"],
+                            marker=marker, mfc="grey", mec="grey", ecolor="grey", linestyle="none", markersize=3.5,
+                            label="Regularised fit (unreliable)")
+        ax.errorbar(x=df_ages.loc[~cond_good_MC].index, 
+                            y=df_ages.loc[~cond_good_MC, f"{weighttype} age (<{age/1e6:.2f} Myr) (MC mean)"] - df_ages.loc[~cond_good_MC, f"{weighttype} age (<{age/1e6:.2f} Myr) (input)"],
+                            yerr=df_ages.loc[~cond_good_MC, f"{weighttype} age (<{age/1e6:.2f} Myr) (MC error)"],
+                            marker=marker, mfc="grey", mec="grey", ecolor="grey", alpha=0.5, linewidth=0.5, linestyle="none", markersize=3.5,
+                            label="MC simulations (unreliable)")
+
         # Decorations
         # ax.text(s=age_range_strs[aa], x=0.05, y=0.95, transform=ax.transAxes, horizontalalignment="left", verticalalignment="top")
         ax.set_ylim([-1, 1])
@@ -187,4 +220,27 @@ for weighttype, marker in zip(["LW", "MW"], ["x", "D"]):
         if savefigs:
             fig.savefig(os.path.join(fig_path, f"{weighttype}_ages_bestcase_hist_err_tau={age:.0e}.pdf"), bbox_inches="tight", format="pdf")
 
+
+for weighttype, marker in zip(["LW", "MW"], ["x", "D"]):
+    for age in [1e8, 1e9]:
+
+        # Print statistics
+        err_mean_abs_regul = np.nanmean(np.abs(df_ages[f"{weighttype} age (<{age/1e6:.2f} Myr) (regularised)"] - df_ages[f"{weighttype} age (<{age/1e6:.2f} Myr) (input)"]))
+        err_mean_regul = np.nanmean(df_ages[f"{weighttype} age (<{age/1e6:.2f} Myr) (regularised)"] - df_ages[f"{weighttype} age (<{age/1e6:.2f} Myr) (input)"])
+        err_std_regul = np.nanstd(df_ages[f"{weighttype} age (<{age/1e6:.2f} Myr) (regularised)"] - df_ages[f"{weighttype} age (<{age/1e6:.2f} Myr) (input)"])
+        err_mean_abs_MC = np.nanmean(np.abs(df_ages[f"{weighttype} age (<{age/1e6:.2f} Myr) (MC mean)"] - df_ages[f"{weighttype} age (<{age/1e6:.2f} Myr) (input)"]))
+        err_mean_MC = np.nanmean(df_ages[f"{weighttype} age (<{age/1e6:.2f} Myr) (MC mean)"] - df_ages[f"{weighttype} age (<{age/1e6:.2f} Myr) (input)"])
+        err_std_MC = np.nanstd(df_ages[f"{weighttype} age (<{age/1e6:.2f} Myr) (MC mean)"] - df_ages[f"{weighttype} age (<{age/1e6:.2f} Myr) (input)"])
+
+        print("--------------------------------------------------------------")
+        print(f"Weight type = {weighttype}, t_cutoff = {age/1e6:.2f} Myr:")
+        print(f"Regularised fit:")
+        print(f"Mean error = {err_mean_regul:.4f} dex ")
+        print(f"Mean absolute error = {err_mean_abs_regul:.4f} dex ")
+        print(f"Std. dev. of errors = {err_std_regul:.4f} dex ")
+        print(f"MC fit:")
+        print(f"Mean error = {err_mean_MC:.4f} dex ")
+        print(f"Mean absolute error = {err_mean_abs_MC:.4f} dex ")
+        print(f"Std. dev. of errors = {err_std_MC:.4f} dex ")
+        print("--------------------------------------------------------------")
 
