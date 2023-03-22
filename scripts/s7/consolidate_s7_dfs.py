@@ -23,7 +23,13 @@ df_fnames = [f for f in os.listdir(s7_data_path)
 for df_fname in df_fnames:
     # Open the dataFrame
     df_gal = pd.read_hdf(os.path.join(s7_data_path, df_fname))
-    df_all = df_all.append(df_gal, ignore_index=True)
+    
+    # Get the name of the galaxy
+    gal = df_gal["Galaxy"].unique()[0]
+
+    # Only add this DataFrame if the galaxy is not already present.
+    if gal not in df_all["Galaxy"].unique():
+        df_all = df_all.append(df_gal, ignore_index=True)
 
 # Save back to file
 df_all.to_hdf(os.path.join(s7_data_path, "s7_ppxf.hd5"), key="s7")
