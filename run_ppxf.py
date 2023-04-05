@@ -46,7 +46,7 @@ import matplotlib.pyplot as plt
 from matplotlib.backends.backend_pdf import PdfPages
 matplotlib.rc("font", size=11)
 matplotlib.rc("text", usetex=False)
-matplotlib.rc("font", **{"family": "serif"})
+# matplotlib.rc("font", **{"family": "serif"})
 matplotlib.rc("image", interpolation="nearest")
 matplotlib.rc("image", origin="lower")
 # plt.close("all")
@@ -64,6 +64,17 @@ def hit_key_to_continue():
 ##############################################################################
 # For fitting extinction in ppxf
 ##############################################################################
+def reddening_fitzpatrick99(lam, ebv):
+    # lam in Angstroms
+    # Need to derive A(lambda) from E(B-V)
+    # fm07 takes as input lambda and A_V, so we first need to convert E(B-V)
+    # into A_V
+    R_V = 3.1
+    A_V = R_V * ebv
+    A_lambda = extinction.fitzpatrick99(wave=lam, a_v=A_V, unit='aa')
+    fact = 10**(-0.4 * A_lambda)  # Need a minus sign here!
+    return fact
+
 def reddening_fm07(lam, ebv):
     # lam in Angstroms
     # Need to derive A(lambda) from E(B-V)
@@ -191,7 +202,7 @@ def ppxf_helper(args):
     # Parse arguments
     templates, spec_log, spec_err_log, noise_scaling_factor,\
         velscale, start_kin, good_px, nmoments, adegree,\
-        mdegree, dv, lambda_vals_log, regul, reddening, reddening_calzetti00,\
+        mdegree, dv, lambda_vals_log, regul, reddening, reddening_fitzpatrick99,\
         reg_dim, kinematic_components, gas_component, gas_names,\
         gas_reddening = args
 
@@ -204,7 +215,7 @@ def ppxf_helper(args):
           vsyst=dv,
           lam=np.exp(lambda_vals_log),
           regul=regul,
-          reddening=reddening, reddening_func=reddening_calzetti00,
+          reddening=reddening, reddening_func=reddening_fitzpatrick99,
           reg_dim=reg_dim,
           component=kinematic_components, gas_component=gas_component,
           gas_names=gas_names, gas_reddening=gas_reddening, method="capfit",
@@ -397,9 +408,14 @@ def add_stuff_to_df(pp_mc_list, pp_regul,
         thisrow["10^-0.4A(lambda) (MC error)"] = np.nanstd(np.array([pp.mpoly for pp in pp_mc_list]), axis=0)
         thisrow["10^-0.4A(lambda) (regularised)"] = pp_regul.mpoly
     else:
-        thisrow["Multiplicative polynomial (MC mean)"] = np.nanmean(np.array([pp.mpoly for pp in pp_mc_list]), axis=0)
-        thisrow["Multiplicative polynomial (MC error)"] = np.nanstd(np.array([pp.mpoly for pp in pp_mc_list]), axis=0)
-        thisrow["Multiplicative polynomial (regularised)"] = pp_regul.mpoly
+        if pp_regul.mpoly is not None:
+            thisrow["Multiplicative polynomial (MC mean)"] = np.nanmean(np.array([pp.mpoly for pp in pp_mc_list]), axis=0)
+            thisrow["Multiplicative polynomial (MC error)"] = np.nanstd(np.array([pp.mpoly for pp in pp_mc_list]), axis=0)
+            thisrow["Multiplicative polynomial (regularised)"] = pp_regul.mpoly
+        elif pp_regul.apoly is not None:
+            thisrow["Additive polynomial (MC mean)"] = np.nanmean(np.array([pp.apoly for pp in pp_mc_list]), axis=0)
+            thisrow["Additive polynomial (MC error)"] = np.nanstd(np.array([pp.apoly for pp in pp_mc_list]), axis=0)
+            thisrow["Additive polynomial (regularised)"] = pp_regul.apoly
     thisrow["Wavelength (rest frame, Å, log-rebinned)"] = pp_regul.lam
 
     # AGN template weights 
@@ -799,7 +815,7 @@ def run_ppxf(spec, spec_err, lambda_vals_A, z,
                   vsyst=dv,
                   lam=np.exp(lambda_vals_log),
                   regul=0,
-                  reddening=reddening, reddening_func=reddening_calzetti00,
+                  reddening=reddening, reddening_func=reddening_fitzpatrick99,
                   reg_dim=reg_dim,
                   component=kinematic_components, gas_component=gas_component,
                   gas_names=gas_names, gas_reddening=gas_reddening, method="capfit",
@@ -816,7 +832,7 @@ def run_ppxf(spec, spec_err, lambda_vals_A, z,
                           vsyst=dv,
                           lam=np.exp(lambda_vals_log),
                           regul=0,
-                          reddening=reddening, reddening_func=reddening_calzetti00,
+                          reddening=reddening, reddening_func=reddening_fitzpatrick99,
                           reg_dim=reg_dim,
                           component=kinematic_components, gas_component=gas_component,
                           gas_names=gas_names, gas_reddening=gas_reddening, method="capfit",
@@ -857,7 +873,7 @@ def run_ppxf(spec, spec_err, lambda_vals_A, z,
                               vsyst=dv,
                               lam=np.exp(lambda_vals_log),
                               regul=regul_fixed,
-                              reddening=reddening, reddening_func=reddening_calzetti00,
+                              reddening=reddening, reddening_func=reddening_fitzpatrick99,
                               reg_dim=reg_dim,
                               component=kinematic_components, gas_component=gas_component,
                               gas_names=gas_names, gas_reddening=gas_reddening, method="capfit")
@@ -892,7 +908,7 @@ def run_ppxf(spec, spec_err, lambda_vals_A, z,
                                   vsyst=dv,
                                   lam=np.exp(lambda_vals_log),
                                   regul=regul,
-                                  reddening=reddening, reddening_func=reddening_calzetti00,
+                                  reddening=reddening, reddening_func=reddening_fitzpatrick99,
                                   reg_dim=reg_dim,
                                   component=kinematic_components, gas_component=gas_component,
                                   gas_names=gas_names, gas_reddening=gas_reddening, method="capfit")
@@ -953,7 +969,7 @@ def run_ppxf(spec, spec_err, lambda_vals_A, z,
                 [
                     templates, spec_log, spec_err_log, noise_scaling_factor,
                     velscale, start_kin, good_px, nmoments, adegree,
-                    mdegree, dv, lambda_vals_log, regul, reddening, reddening_calzetti00,
+                    mdegree, dv, lambda_vals_log, regul, reddening, reddening_fitzpatrick99,
                     reg_dim, kinematic_components, gas_component, gas_names,
                     gas_reddening
                 ] for regul in regul_vals
@@ -1057,7 +1073,7 @@ def run_ppxf(spec, spec_err, lambda_vals_A, z,
                     [
                         templates, spec_log, spec_err_log, noise_scaling_factor,
                         velscale, start_kin, good_px, nmoments, adegree,
-                        mdegree, dv, lambda_vals_log, regul, reddening, reddening_calzetti00,
+                        mdegree, dv, lambda_vals_log, regul, reddening, reddening_fitzpatrick99,
                         reg_dim, kinematic_components, gas_component, gas_names,
                         gas_reddening
                     ] for regul in regul_vals
