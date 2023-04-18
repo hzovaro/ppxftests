@@ -77,7 +77,7 @@ def ppxf_helper(args):
     # Run ppxf
     pp = run_ppxf(spec=spec_noise, spec_err=spec_err, lambda_vals_A=lambda_vals_rest_A,
                   isochrones="Padova",
-                  bad_pixel_ranges=bad_pixel_ranges_A,
+                  bad_pixel_ranges_A=bad_pixel_ranges_A,
                   z=0.0, ngascomponents=1,
                   fit_gas=False, tie_balmer=False,
                   fit_agn_cont=True,
