@@ -40,7 +40,7 @@ if args[1].upper() == "DEBUG":
 else:
     debug = False
 nthreads = 20 if debug else 56
-niters = 20 if debug else 1000
+niters = 100 if debug else 1000
 
 # x and y coordinates in DataCube corresponding to the chosen aperture
 aperture = Aperture[args[1]]
@@ -81,6 +81,7 @@ def ppxf_helper(args):
                   z=0.0, ngascomponents=1,
                   fit_gas=False, tie_balmer=False,
                   fit_agn_cont=True,
+                  clean=True,
                   reddening=1.0, mdegree=-1,
                   regularisation_method="none")
     return pp
@@ -150,18 +151,20 @@ for gal in gals:
     ##############################################################################
     # PPXF: regularised
     ##############################################################################
-    t = time()
-    print(f"Gal {gal}: Regularisation: running ppxf on {nthreads} threads...")
-    pp_regul = run_ppxf(spec=spec_cont_only * norm, spec_err=spec_err * norm, lambda_vals_A=lambda_vals_rest_A,
-                        isochrones="Padova", z=0.0, 
-                        fit_gas=False, ngascomponents=0,
-                        fit_agn_cont=True,
-                        reddening=1.0, mdegree=-1,
-                        bad_pixel_ranges_A=bad_pixel_ranges_A,
-                        regularisation_method="auto",
-                        regul_nthreads=nthreads, interactive_mode=False,
-                        plotit=True if debug else False)
-    print(f"Gal {gal}: Regularisation: total time in run_ppxf: {time() - t:.2f} seconds")
+    if not debug:
+        t = time()
+        print(f"Gal {gal}: Regularisation: running ppxf on {nthreads} threads...")
+        pp_regul = run_ppxf(spec=spec_cont_only * norm, spec_err=spec_err * norm, lambda_vals_A=lambda_vals_rest_A,
+                            isochrones="Padova", z=0.0, 
+                            fit_gas=False, ngascomponents=0,
+                            fit_agn_cont=True,
+                            reddening=1.0, mdegree=-1,
+                            bad_pixel_ranges_A=bad_pixel_ranges_A,
+                            regularisation_method="auto",
+                            clean=True,
+                            regul_nthreads=nthreads, interactive_mode=False,
+                            plotit=True if debug else False)
+        print(f"Gal {gal}: Regularisation: total time in run_ppxf: {time() - t:.2f} seconds")
 
     ##############################################################################
     # PPXF: MC simulations
@@ -178,10 +181,17 @@ for gal in gals:
         pp_mc_list = list(tqdm(pool.imap(ppxf_helper, args_list), total=niters))
     print(f"Gal {gal}: MC simulations: total time in ppxf: {time() - t:.2f} s")
 
+    # SNEAKY: to save time in DEBUG mode, replace pp_regul with one of the MC instances
+    if debug:
+        pp_regul = pp_mc_list[0]
+
     ##############################################################################
     # Extract information for DataFrame
     ##############################################################################
-    thisrow = add_stuff_to_df(pp_mc_list, pp_regul)
+    if debug:
+        thisrow = add_stuff_to_df(pp_mc_list, pp_regul, plotit=True, gal=gal, savefig=True)
+    else:
+        thisrow = add_stuff_to_df(pp_mc_list, pp_regul)
     thisrow["Galaxy"] = gal
 
     df = df.append(thisrow, ignore_index=True)
