@@ -1,5 +1,5 @@
 #!/bin/bash
-#PBS -N 4asset11
+#PBS -N re1set3
 #PBS -q smallmem
 #PBS -M henry.zovaro@anu.edu.au
 #PBS -m abe
@@ -7,6 +7,7 @@
 #PBS -k oe
 
 cd /home/u5708159/python/Modules/ppxftests/scripts/s7
-python run_ppxf_s7.py FOURAS NGC4968
-python run_ppxf_s7.py FOURAS NGC6300
-python run_ppxf_s7.py FOURAS NGC7682
+python run_ppxf_s7.py RE1 IC1657
+python run_ppxf_s7.py RE1 IC1816
+python run_ppxf_s7.py RE1 IC4777
+python run_ppxf_s7.py RE1 MCG-03-34-064

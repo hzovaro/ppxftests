@@ -7,4 +7,7 @@
 #PBS -k oe
 
 cd /home/u5708159/python/Modules/ppxftests/scripts/s7
-python run_ppxf_s7.py ONEKPC IC1657 IC1816 IC4777 MCG-03-34-064 
+python run_ppxf_s7.py ONEKPC IC1657
+python run_ppxf_s7.py ONEKPC IC1816
+python run_ppxf_s7.py ONEKPC IC4777
+python run_ppxf_s7.py ONEKPC MCG-03-34-064 

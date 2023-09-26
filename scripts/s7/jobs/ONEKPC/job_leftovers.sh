@@ -1,5 +1,5 @@
 #!/bin/bash
-#PBS -N 4asset11
+#PBS -N 1kpcleftovers
 #PBS -q smallmem
 #PBS -M henry.zovaro@anu.edu.au
 #PBS -m abe
@@ -7,6 +7,4 @@
 #PBS -k oe
 
 cd /home/u5708159/python/Modules/ppxftests/scripts/s7
-python run_ppxf_s7.py FOURAS NGC4968
-python run_ppxf_s7.py FOURAS NGC6300
-python run_ppxf_s7.py FOURAS NGC7682
+python run_ppxf_s7.py ONEKPC NGC5664 NGC4845 NGC1320
