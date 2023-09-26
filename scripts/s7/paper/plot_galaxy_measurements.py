@@ -54,7 +54,7 @@ for ap in ["FOURAS", "ONEKPC", "RE1"]:
     # Load the DataFrame
     ###############################################################################
     # Load the DataFrame containing ages 
-    df = pd.read_hdf(os.path.join(s7_data_path, f"s7_ppxf_{ap}_measurements_full_version.hd5"), key="S7 measurements")
+    df = pd.read_hdf(os.path.join(s7_data_path, f"s7_ppxf_{ap}.hd5"), key="S7")
     gals = df.index.values
 
     ###############################################################################
