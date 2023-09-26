@@ -23,7 +23,9 @@ fig_path = "/priv/meggs3/u5708159/S7/mar23/ppxf/figs/"
 ###############################################################################
 # Settings
 ###############################################################################
+mc_only = True
 savefigs = True
+debug = True
 aps = [ap.upper() for ap in sys.argv[1:]]
 for ap in aps:
     assert ap in ["FOURAS", "ONEKPC", "RE1"], "ap must be one of 'FOURAS', 'ONEKPC', 'RE1'!"
@@ -54,7 +56,8 @@ for ap in aps:
         #//////////////////////////////////////////////////////////////////////////////
         fig, axs = plt.subplots(nrows=2, ncols=1, figsize=(12, 8))
         for weighttype, ax in zip(["Mass", "Light"], axs):
-            ax.step(x=ages, y=df_gal[f"SFH {weighttype[0]}W 1D (regularised)"].values.item(), where="mid", color="purple", label="SFH (regularised)", linewidth=1.5)
+            if not mc_only:
+                ax.step(x=ages, y=df_gal[f"SFH {weighttype[0]}W 1D (regularised)"].values.item(), where="mid", color="purple", label="SFH (regularised)", linewidth=1.5)
             ax.step(x=ages, y=df_gal[f"SFH {weighttype[0]}W 1D (MC mean)"].values.item(), where="mid", color="cornflowerblue", label="SFH (MC)", linewidth=1.0)
             ax.errorbar(x=ages, 
                         y=df_gal[f"SFH {weighttype[0]}W 1D (MC mean)"].values.item(),
@@ -63,14 +66,15 @@ for ap in aps:
             # ax.axhline(1e-4, color="k", ls="--", linewidth=1)
 
             # Add shaded region to indicate where the age estimate becomes unreliable
-            unreliable_idxs_regul = np.log10(df_gal["Cumulative light fraction vs. age cutoff (regularised)"].item()) < -2.5    
-            try:
-                first_reliable_age_regul = ages[np.argwhere(~unreliable_idxs_regul)[0]][0]
-                first_reliable_age_regul_plot = 10**(np.log10(first_reliable_age_regul) - 0.025)
-                ax.axvspan(xmin=ages[0], xmax=first_reliable_age_regul_plot, alpha=0.1, color="grey")
-                ax.axvline(first_reliable_age_regul_plot, lw=1, ls="--", color="k", label="Unreliable range (regularised fit)")
-            except IndexError as e:
-                print(f"ERROR: unable to plot unreliable range for {gal} (regularised fit). Skipping...")
+            if not mc_only:
+                unreliable_idxs_regul = np.log10(df_gal["Cumulative light fraction vs. age cutoff (regularised)"].item()) < -2.5    
+                try:
+                    first_reliable_age_regul = ages[np.argwhere(~unreliable_idxs_regul)[0]][0]
+                    first_reliable_age_regul_plot = 10**(np.log10(first_reliable_age_regul) - 0.025)
+                    ax.axvspan(xmin=ages[0], xmax=first_reliable_age_regul_plot, alpha=0.1, color="grey")
+                    ax.axvline(first_reliable_age_regul_plot, lw=1, ls="--", color="k", label="Unreliable range (regularised fit)")
+                except IndexError as e:
+                    print(f"ERROR: unable to plot unreliable range for {gal} (regularised fit). Skipping...")
             
             unreliable_idxs_mc = np.log10(df_gal["Cumulative light fraction vs. age cutoff (MC mean)"].item()) < -2.5    
             try:
@@ -94,7 +98,13 @@ for ap in aps:
             axs[0].legend(loc="upper left", fontsize="small")
             axs[0].set_title(gal)
 
+            if debug:
+                Tracer()()
+
             if savefigs:
-                fig.savefig(os.path.join(fig_path, f"{gal}_sfh_{ap}.pdf"), bbox_inches="tight", format="pdf")   
+                if mc_only:
+                    fig.savefig(os.path.join(fig_path, f"{gal}_sfh_{ap}_MC_only.pdf"), bbox_inches="tight", format="pdf")   
+                else:
+                    fig.savefig(os.path.join(fig_path, f"{gal}_sfh_{ap}.pdf"), bbox_inches="tight", format="pdf")   
 
         # plt.close("all")
