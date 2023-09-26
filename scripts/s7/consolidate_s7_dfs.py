@@ -11,7 +11,6 @@ class Aperture(Enum):
     SDSS = 2
     ONEKPC = 3
 
-from gal_list import gals
 
 from IPython.core.debugger import Tracer
 
@@ -21,8 +20,10 @@ from ppxftests.ssputils import log_rebin_and_convolve_stellar_templates
 
 s7_data_path = "/priv/meggs3/u5708159/S7/mar23/ppxf"
 
-debug = False
 overwrite_dataframe = True
+
+# List of galaxies 
+gals = [g.strip("\n") for g in open(os.path.join(s7_data_path, "gal_list.txt")).readlines()]
 
 # Load the stellar ages to put in the DataFrame
 _, _, metallicities, ages =\
