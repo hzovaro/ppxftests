@@ -5,7 +5,8 @@ from ppxftests.ssputils import load_ssp_templates
 
 s7_data_path = "/priv/meggs3/u5708159/S7/mar23/ppxf"
 
-for ap in ["FOURAS", "ONEKPC", "RE1"]:
+# for ap in ["FOURAS", "ONEKPC", "RE1"]:
+for ap in ["RE1"]:
 
     ###############################################################################
     # Load the DataFrame
