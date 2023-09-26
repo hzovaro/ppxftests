@@ -1,5 +1,9 @@
 import sys, os 
 
+# Use silent backend for running on avatar
+import matplotlib
+matplotlib.use("agg")
+
 import numpy as np
 from numpy.random import RandomState
 import pandas as pd
@@ -39,8 +43,8 @@ if args[1].upper() == "DEBUG":
     args = args[1:]  
 else:
     debug = False
-nthreads = 20 if debug else 56
-niters = 100 if debug else 1000
+nthreads = 5 if debug else 56
+niters = 10 if debug else 1000
 
 # x and y coordinates in DataCube corresponding to the chosen aperture
 aperture = Aperture[args[1]]
@@ -146,7 +150,6 @@ for gal in gals:
         ax.set_xlabel("Wavelength (Å)")
         ax.set_ylabel(r"Normalised flux ($F_\lambda$)")
         ax.legend()
-        input("Hit a key to continue...")
 
     ##############################################################################
     # PPXF: regularised
@@ -188,9 +191,13 @@ for gal in gals:
     ##############################################################################
     # Extract information for DataFrame
     ##############################################################################
-    if debug:
-        thisrow = add_stuff_to_df(pp_mc_list, pp_regul, plotit=True, gal=gal, savefig=True)
-    else:
+    try:
+        if debug:
+            thisrow = add_stuff_to_df(pp_mc_list, pp_regul, plotit=True, plot_fname=f"MC_iter_{gal}_{aperture.name}_debug.pdf", savefig=True, gal=gal)
+        else:
+            thisrow = add_stuff_to_df(pp_mc_list, pp_regul, plotit=True, plot_fname=f"MC_iter_{gal}_{aperture.name}.pdf", savefig=True, gal=gal)
+    except:
+        print(f"WARNING: plotting failed for {gal}!")
         thisrow = add_stuff_to_df(pp_mc_list, pp_regul)
     thisrow["Galaxy"] = gal
 
