@@ -27,7 +27,7 @@ savefigs = True
 aps = [ap.upper() for ap in sys.argv[1:]]
 for ap in aps:
     assert ap in ["FOURAS", "ONEKPC", "RE1"], "ap must be one of 'FOURAS', 'ONEKPC', 'RE1'!"
-    
+
     ###############################################################################
     # Load the DataFrame
     ###############################################################################

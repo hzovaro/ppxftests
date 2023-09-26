@@ -87,7 +87,7 @@ for ap in ["FOURAS", "ONEKPC", "RE1"]:
         # Extract the age index at the appropriate time 
         for age in ages[1:]:
             age_idx = np.nanargmin(np.abs(ages - age))
-            for col in ["MC mean", "MC error", "regularised"]:
+            for col in ["MC mean", "MC error", "MC 50th percentile", "MC 16th percentile", "MC 84th percentile", "regularised"]:
                 df_ages.loc[gal, f"MW age (<{age/1e6:.2f} Myr) ({col})"] =\
                     df_gal[f"Mass-weighted age vs. age cutoff ({col})"].values.item()[age_idx - 1]
                 df_ages.loc[gal, f"LW age (<{age/1e6:.2f} Myr) ({col})"] =\
@@ -121,7 +121,10 @@ for ap in ["FOURAS", "ONEKPC", "RE1"]:
                         label="Regularised fit")
             ax_all.errorbar(x=df_ages.loc[cond_good_MC, "Number"].values + dx, 
                         y=df_ages.loc[cond_good_MC, f"{weighttype} age (<{age/1e6:.2f} Myr) (MC mean)"],
-                        yerr=df_ages.loc[cond_good_MC, f"{weighttype} age (<{age/1e6:.2f} Myr) (MC error)"],
+                        yerr=[
+                            df_ages.loc[cond_good_MC, f"{weighttype} age (<{age/1e6:.2f} Myr) (MC 50th percentile)"] - df_ages.loc[cond_good_MC, f"{weighttype} age (<{age/1e6:.2f} Myr) (MC 16th percentile)"],
+                            df_ages.loc[cond_good_MC, f"{weighttype} age (<{age/1e6:.2f} Myr) (MC 84th percentile)"] - df_ages.loc[cond_good_MC, f"{weighttype} age (<{age/1e6:.2f} Myr) (MC 50th percentile)"],
+                        ],
                         marker=marker_dict["MC"], mfc=colour_dict[ap], mec=colour_dict[ap], ecolor=colour_dict[ap], alpha=0.5, linewidth=0.5, linestyle="none", markersize=5,
                         label="MC simulations")
             # Unreliable
@@ -131,7 +134,10 @@ for ap in ["FOURAS", "ONEKPC", "RE1"]:
                         label="Regularised fit (unreliable)")
             ax_all.errorbar(x=df_ages.loc[~cond_good_MC, "Number"].values + dx, 
                         y=df_ages.loc[~cond_good_MC, f"{weighttype} age (<{age/1e6:.2f} Myr) (MC mean)"],
-                        yerr=df_ages.loc[~cond_good_MC, f"{weighttype} age (<{age/1e6:.2f} Myr) (MC error)"],
+                        yerr=[
+                            df_ages.loc[~cond_good_MC, f"{weighttype} age (<{age/1e6:.2f} Myr) (MC 50th percentile)"] - df_ages.loc[~cond_good_MC, f"{weighttype} age (<{age/1e6:.2f} Myr) (MC 16th percentile)"],
+                            df_ages.loc[~cond_good_MC, f"{weighttype} age (<{age/1e6:.2f} Myr) (MC 84th percentile)"] - df_ages.loc[~cond_good_MC, f"{weighttype} age (<{age/1e6:.2f} Myr) (MC 50th percentile)"],
+                        ],
                         marker=marker_dict["MC"], mfc="lightgrey", mec="grey", ecolor="grey", alpha=0.5, linewidth=0.5, linestyle="none", markersize=5,
                         label="MC simulations (unreliable)")
             

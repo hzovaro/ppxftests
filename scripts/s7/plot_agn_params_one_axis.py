@@ -22,7 +22,7 @@ fig_path = "/priv/meggs3/u5708159/S7/mar23/ppxf/figs/"
 ###############################################################################
 # Settings
 ###############################################################################
-savefigs = True
+savefigs = False
 
 marker_dict = {
     "MC": "d", 
@@ -73,9 +73,15 @@ for ap in ["FOURAS", "ONEKPC", "RE1"]:
         df_ages.loc[gal, "x_AGN (total, regularised)"] = df_gal["x_AGN (total, regularised)"].values[0]
         df_ages.loc[gal, "x_AGN (total, MC mean)"] = df_gal["x_AGN (total, MC mean)"].values[0]
         df_ages.loc[gal, "x_AGN (total, MC error)"] = df_gal["x_AGN (total, MC error)"].values[0]
+        df_ages.loc[gal, "x_AGN (total, MC 16th percentile)"] = df_gal["x_AGN (total, MC 16th percentile)"].values[0]
+        df_ages.loc[gal, "x_AGN (total, MC 50th percentile)"] = df_gal["x_AGN (total, MC 50th percentile)"].values[0]
+        df_ages.loc[gal, "x_AGN (total, MC 84th percentile)"] = df_gal["x_AGN (total, MC 84th percentile)"].values[0]
         df_ages.loc[gal, "A_V (regularised)"] = df_gal["A_V (regularised)"].values[0]
         df_ages.loc[gal, "A_V (MC mean)"] = df_gal["A_V (MC mean)"].values[0]
         df_ages.loc[gal, "A_V (MC error)"] = df_gal["A_V (MC error)"].values[0]
+        df_ages.loc[gal, "A_V (MC 16th percentile)"] = df_gal["A_V (MC 16th percentile)"].values[0]
+        df_ages.loc[gal, "A_V (MC 50th percentile)"] = df_gal["A_V (MC 50th percentile)"].values[0]
+        df_ages.loc[gal, "A_V (MC 84th percentile)"] = df_gal["A_V (MC 84th percentile)"].values[0]
         df_ages.loc[gal, "Number"] = gg
 
     ###############################################################################
@@ -87,7 +93,10 @@ for ap in ["FOURAS", "ONEKPC", "RE1"]:
                 label="Regularised fit")
     ax_AGN.errorbar(x=df_ages["Number"].values + dx, 
                 y=df_ages[f"x_AGN (total, MC mean)"],
-                yerr=df_ages[f"x_AGN (total, MC error)"],
+                yerr=[
+                            df_ages[f"x_AGN (total, MC 50th percentile)"] - df_ages[f"x_AGN (total, MC 16th percentile)"],
+                            df_ages[f"x_AGN (total, MC 84th percentile)"] - df_ages[f"x_AGN (total, MC 50th percentile)"],
+                        ],
                 marker=marker_dict["MC"], mfc=colour_dict[ap], mec=colour_dict[ap], ecolor=colour_dict[ap], alpha=0.5, linewidth=1.2, linestyle="none", markersize=6,
                 label="MC simulations")
 
@@ -100,7 +109,10 @@ for ap in ["FOURAS", "ONEKPC", "RE1"]:
                 label="Regularised fit")
     ax_AV.errorbar(x=df_ages["Number"].values + dx, 
                 y=df_ages[f"A_V (MC mean)"],
-                yerr=df_ages[f"A_V (MC error)"],
+                yerr=[
+                            df_ages[f"A_V (MC 50th percentile)"] - df_ages[f"A_V (MC 16th percentile)"],
+                            df_ages[f"A_V (MC 84th percentile)"] - df_ages[f"A_V (MC 50th percentile)"],
+                        ],
                 marker=marker_dict["MC"], mfc=colour_dict[ap], mec=colour_dict[ap], ecolor=colour_dict[ap], alpha=0.5, linewidth=1.2, linestyle="none", markersize=6,
                 label="MC simulations")
 
