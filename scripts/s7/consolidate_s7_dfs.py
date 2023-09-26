@@ -74,11 +74,11 @@ for ap in [Aperture.FOURAS, Aperture.ONEKPC, Aperture.RE1]:
     if not overwrite_dataframe and os.path.exists(os.path.join(s7_data_path, df_fname)):
         k = input(f"File {os.path.join(s7_data_path, df_fname)} exists - are you sure you want to overwrite it? ")
         if k.lower().startswith("y"):
-            df_all.to_hdf(os.path.join(s7_data_path, df_fname), key="s7")
+            df_all.to_hdf(os.path.join(s7_data_path, df_fname), key="S7")
         else:
             print("WARNING: not overwriting existing file!")
     else:
-        df_all.to_hdf(os.path.join(s7_data_path, df_fname), key="s7")
+        df_all.to_hdf(os.path.join(s7_data_path, df_fname), key="S7")
 
     # Only save AGN contributions
     cols = ["x_AGN (total, regularised)", "x_AGN (total, MC mean)", "x_AGN (total, MC error)", "x_AGN (total, MC 16th percentile)", "x_AGN (total, MC 50th percentile)", "x_AGN (total, MC 84th percentile)",]
