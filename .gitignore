@@ -1,5 +1,8 @@
 .DS_Store
 ._.DS_Store
+._*
+**/._*
 *.pyc
-notebooks/.ipynb_checkpoints/
 __pycache__/*
+**/__pycache__/*
+notebooks/.ipynb_checkpoints/
