@@ -14,7 +14,7 @@ from itertools import product
 import ppxf.ppxf_util as util
 
 from cosmocalc import get_dist
-from spaxelsleuth.plotting.plotgrids import load_HII_grid, load_AGN_grid
+# from spaxelsleuth.plotting.plotgrids import load_HII_grid, load_AGN_grid
 
 from ppxftests.ppxf_plot import plot_sfh_mass_weighted
 from ppxftests.ssputils import load_ssp_templates, get_bin_edges_and_widths
@@ -23,8 +23,6 @@ import matplotlib.pyplot as plt
 from matplotlib.lines import Line2D
 plt.ion()
 plt.close("all")
-
-from IPython.core.debugger import Tracer
 
 FWHM_WIFES_INST_A = 1.4
 VELSCALE_WIFES = 45.9896038
@@ -135,6 +133,22 @@ def create_mock_spectrum(sfh_mass_weighted, isochrones, sigma_star_kms, z, SNR,
             "len(eline_model) must be equal to ngascomponents!"
         assert np.all([m in ["HII", "AGN", "BLR"] for m in eline_model]),\
             "entries in eline_model must be either 'HII', 'AGN' or 'BLR'!"
+        
+    if plotit:
+        nrows = 5 if ngascomponents > 0 else 4
+        fig, axs = plt.subplots(ncols=1, nrows=nrows, figsize=(7.5, 10))
+        fig.subplots_adjust(hspace=0, left=0.1, right=0.9, bottom=0.05, top=0.95)
+        ax_ctr = 0
+        plot_norm = 1e39
+        text_kwargs = {
+             "x":0.02, "y":0.94, "ha": "left", "va":"top", 
+            "bbox": dict(facecolor="lemonchiffon", edgecolor="k", boxstyle="round", alpha=0.9),
+        }
+        legend_kwargs = {
+            "fontsize": 7,
+            "loc": "upper right",
+            "framealpha": 0.8,
+        }
 
     ###########################################################################
     # WIFES Instrument properties
@@ -171,29 +185,26 @@ def create_mock_spectrum(sfh_mass_weighted, isochrones, sigma_star_kms, z, SNR,
     ###########################################################################
     # Create the mock spectrum
     ###########################################################################
-    # Some settings for plotting
-    fig_w = 12
-    fig_h = 3.5
-
     # 1. Sum the templates by their weights to create a single spectrum
     spec_linear = np.nansum(np.nansum(sfh_mass_weighted[None, :, :] * stellar_templates_linear, axis=1), axis=1)
 
     # Plot to check
     if plotit:
-        fig, ax = plt.subplots(nrows=1, ncols=1, figsize=(fig_w, fig_h))
-        ax.plot(lambda_vals_ssp_linear, spec_linear, color="black", label="Total spectrum")
+        ax = axs[ax_ctr]
+        ax.plot(lambda_vals_ssp_linear, spec_linear / plot_norm, color="black", label="Total spectrum")
         for mm, aa in product(range(N_metallicities), range(N_ages)):
             w = sfh_mass_weighted[mm, aa]
             if w > 0:
-                ax.plot(lambda_vals_ssp_linear, stellar_templates_linear[:, mm, aa] * w, alpha=0.5, color="grey")
-        ax.set_ylabel(r"$L \,\rm (erg\,s^{-1}\,\AA^{-1}$)")
+                ax.plot(lambda_vals_ssp_linear, stellar_templates_linear[:, mm, aa] * w / plot_norm, alpha=0.5, lw=0.5, color="grey")
+        ax.set_ylabel(r"$L_{\lambda}(\lambda) \,\rm (10^{39}\,erg\,s^{-1}\,\AA^{-1}$)")
         ax.set_xlabel(r"Rest-frame wavelength ($\rm \AA$)")
         lines = [Line2D([0], [0], color="black", alpha=1.0),
                  Line2D([0], [0], color="black", alpha=0.5)]
         labels = ["Total spectrum", "Individual templates"]
-        ax.legend(lines, labels)
-        ax.set_ylim([0, None])
+        ax.legend(lines, labels, **legend_kwargs)
         ax.autoscale(enable="True", axis="x", tight=True)
+        ax.text(s="Adding weighted templates", transform=ax.transAxes, **text_kwargs)
+        ax_ctr += 1
 
     ###########################################################################
     # 2. Logarithmically re-bin
@@ -225,30 +236,29 @@ def create_mock_spectrum(sfh_mass_weighted, isochrones, sigma_star_kms, z, SNR,
     spec_log_conv = convolve(spec_log, kernel_losvd, mode="same") / np.nansum(kernel_losvd)
 
     if plotit:
-        fig, ax = plt.subplots(nrows=1, ncols=1, figsize=(fig_w, fig_h))
-        ax.plot(np.exp(lambda_vals_ssp_log), spec_log, color="grey", label="Before convolution with LOSVD")
-        ax.plot(np.exp(lambda_vals_ssp_log), spec_log_conv, color="black", label="After convolution with LOSVD")
-        ax.set_ylabel(r"$L \,\rm (erg\,s^{-1}\,\AA^{-1}$)")
+        ax = axs[ax_ctr]
+        ax.plot(np.exp(lambda_vals_ssp_log), spec_log / plot_norm, color="grey", lw=0.5, label="Before convolution with LOSVD")
+        ax.plot(np.exp(lambda_vals_ssp_log), spec_log_conv / plot_norm, color="black", label="After convolution with LOSVD")
+        ax.set_ylabel(r"$L_{\lambda}(\lambda) \,\rm (10^{39}\,erg\,s^{-1}\,\AA^{-1}$)")
         ax.set_xlabel(r"Rest-frame wavelength ($\rm \AA$)")
-        ax.legend()
-        ax.set_ylim([0, None])
+        ax.legend(**legend_kwargs)
         ax.autoscale(enable="True", axis="x", tight=True)
+        ax.text(s="Convolution with LOSVD", transform=ax.transAxes, **text_kwargs)
+        ax_ctr += 1
 
         # Add an extra axis 
-        ax_inset = fig.add_axes([0.4, 0.25, 0.2, 0.35])
+        bbox = ax.get_position()
+        ax_inset = fig.add_axes([bbox.x0 + 0.57, bbox.y0 + 0.03, bbox.width / 4, bbox.height / 3.])
         pts = (np.exp(lambda_vals_ssp_log) > 6562.8 - 50) & (np.exp(lambda_vals_ssp_log) < 6562.8 + 50)
-        ax_inset.plot(np.exp(lambda_vals_ssp_log)[pts], spec_log[pts], color="grey", label="Before convolution with LOSVD")
-        ax_inset.plot(np.exp(lambda_vals_ssp_log)[pts], spec_log_conv[pts], color="black", label="After convolution with LOSVD")
+        ax_inset.plot(np.exp(lambda_vals_ssp_log)[pts], spec_log[pts] / plot_norm, color="grey", lw=0.5, label="Before convolution with LOSVD")
+        ax_inset.plot(np.exp(lambda_vals_ssp_log)[pts], spec_log_conv[pts] / plot_norm, color="black", label="After convolution with LOSVD")
         ax_inset.autoscale(enable="True", axis="x", tight=True)
-        ax_inset.set_ylabel(r"$L \,\rm (erg\,s^{-1}\,\AA^{-1}$)")
-        ax_inset.set_xlabel(r"Rest-frame wavelength ($\rm \AA$)", labelpad=-3)
+        ax_inset.tick_params(axis="both", which="major", labelsize=7)
 
     ###########################################################################
     # 4b. Add emission lines, if needed
     if ngascomponents > 0:
         spec_log_lines = np.zeros(spec_log_conv.shape)
-        if plotit:
-            fig, ax = plt.subplots(nrows=1, ncols=1, figsize=(fig_w, fig_h))
  
         eline_lambdas_A = {
             "NeV3347": 3346.79,
@@ -307,52 +317,55 @@ def create_mock_spectrum(sfh_mass_weighted, isochrones, sigma_star_kms, z, SNR,
                     # Add to spectrum
                     spec_log_lines += line
 
-                break 
+            else:
+                raise NotImplementedError("Grids need fixing!")
+                if eline_model[nn] == "HII":
+                    grid_df = load_HII_grid()
+                    cond = grid_df["Nebular abundance (Z/Zsun)"] == 2.0
+                    cond &= grid_df["log(U) (inner)"] == -3
+                    cond &= grid_df["log(P/k)"] == 5.0
+                elif eline_model[nn] == "AGN":
+                    raise NotImplementedError("Grids need fixing!")
+                    grid_df = load_AGN_grid()
+                    cond = grid_df["Nebular abundance (Z/Zsun)"] == 2.0
+                    cond &= grid_df["log(U) (inner)"] == -2.0
+                    cond &= grid_df["log(P/k)"] == 6.0
+                    cond &= grid_df["E_peak (log_10(keV))"] == -1.5
 
-            elif eline_model[nn] == "HII":
-                grid_df = load_HII_grid()
-                cond = grid_df["Nebular abundance (Z/Zsun)"] == 2.0
-                cond &= grid_df["log(U) (inner)"] == -3
-                cond &= grid_df["log(P/k)"] == 5.0
-            elif eline_model[nn] == "AGN":
-                grid_df = load_AGN_grid()
-                cond = grid_df["Nebular abundance (Z/Zsun)"] == 2.0
-                cond &= grid_df["log(U) (inner)"] == -2.0
-                cond &= grid_df["log(P/k)"] == 6.0
-                cond &= grid_df["E_peak (log_10(keV))"] == -1.5
+                eline_list = [e for e in eline_lambdas_A if e in grid_df.columns]
+                for eline in eline_list:
+                    # Compute the central wavelength & width from the velocity & velocity dispersion
+                    sigma_gas_A = sigma_gas_kms[nn] * eline_lambdas_A[eline] / (constants.c / 1e3)
+                    lambda_gas_A = get_wavelength_from_velocity(lambda_rest=eline_lambdas_A[eline],
+                                                                v=v_gas_kms[nn],
+                                                                units='km/s')
 
-            eline_list = [e for e in eline_lambdas_A if e in grid_df.columns]
-            for eline in eline_list:
-                # Compute the central wavelength & width from the velocity & velocity dispersion
-                sigma_gas_A = sigma_gas_kms[nn] * eline_lambdas_A[eline] / (constants.c / 1e3)
-                lambda_gas_A = get_wavelength_from_velocity(lambda_rest=eline_lambdas_A[eline],
-                                                            v=v_gas_kms[nn],
-                                                            units='km/s')
+                    # Determine the strength of the line
+                    # NOTE: 10^41 erg s^-1 corresponds to a SFR of ~0.5 Msun/yr
+                    L_Hb_erg_s = L_Ha_erg_s[nn] * grid_df.loc[cond, "HBETA"].values[0] / grid_df.loc[cond, "HALPHA"].values[0]
+                    A = grid_df.loc[cond, eline].values[0] * L_Hb_erg_s
 
-                # Determine the strength of the line
-                # NOTE: 10^41 erg s^-1 corresponds to a SFR of ~0.5 Msun/yr
-                L_Hb_erg_s = L_Ha_erg_s[nn] * grid_df.loc[cond, "HBETA"].values[0] / grid_df.loc[cond, "HALPHA"].values[0]
-                A = grid_df.loc[cond, eline].values[0] * L_Hb_erg_s
+                    # Define a Gaussian
+                    line = A * np.exp( -(np.exp(lambda_vals_ssp_log) - lambda_gas_A)**2 / (2 * sigma_gas_A**2))
 
-                # Define a Gaussian
-                line = A * np.exp( -(np.exp(lambda_vals_ssp_log) - lambda_gas_A)**2 / (2 * sigma_gas_A**2))
-
-                # Add to spectrum
-                spec_log_lines += line
+                    # Add to spectrum
+                    spec_log_lines += line
 
         # Add to spectrum
         spec_log_conv_prev = np.copy(spec_log_conv)
         spec_log_conv += spec_log_lines
 
         if plotit:
-            ax.plot(np.exp(lambda_vals_ssp_log), spec_log_lines, color="green", label="Emission lines")
-            ax.plot(np.exp(lambda_vals_ssp_log), spec_log_conv_prev, color="black", alpha=0.5, label="Without emission lines")
-            ax.plot(np.exp(lambda_vals_ssp_log), spec_log_conv, color="black", label="With emission lines")
-            ax.set_ylabel(r"$L \,\rm (erg\,s^{-1}\,\AA^{-1}$)")
+            ax = axs[ax_ctr]
+            ax.plot(np.exp(lambda_vals_ssp_log), spec_log_lines / plot_norm, color="green", label="Emission lines")
+            ax.plot(np.exp(lambda_vals_ssp_log), spec_log_conv_prev / plot_norm, color="black", alpha=0.5, label="Without emission lines")
+            ax.plot(np.exp(lambda_vals_ssp_log), spec_log_conv / plot_norm, color="black", label="With emission lines")
+            ax.set_ylabel(r"$L_{\lambda}(\lambda) \,\rm (10^{39}\,erg\,s^{-1}\,\AA^{-1}$)")
             ax.set_xlabel(r"Rest-frame wavelength ($\rm \AA$)")
-            ax.legend()
-            ax.set_ylim([0, None])
+            ax.legend(**legend_kwargs)
             ax.autoscale(enable="True", axis="x", tight=True)
+            ax.text(s="Adding emission lines", transform=ax.transAxes, **text_kwargs)
+            ax_ctr += 1
 
     ###########################################################################
     # 4c. Add AGN continuum, if needed
@@ -379,16 +392,17 @@ def create_mock_spectrum(sfh_mass_weighted, isochrones, sigma_star_kms, z, SNR,
         spec_log_conv += spec_log_agn
 
         if plotit:
-            fig, ax = plt.subplots(nrows=1, ncols=1, figsize=(fig_w, fig_h))
-            ax.plot(np.exp(lambda_vals_ssp_log), spec_log_agn, color="magenta", 
+            ax = axs[ax_ctr]
+            ax.plot(np.exp(lambda_vals_ssp_log), spec_log_agn / plot_norm, color="magenta", 
                     label=r"AGN continuum")
-            ax.plot(np.exp(lambda_vals_ssp_log), spec_log_conv_prev, color="black", alpha=0.5, label="Without AGN continuum")
-            ax.plot(np.exp(lambda_vals_ssp_log), spec_log_conv, color="black", label="With AGN continuum")
-            ax.set_ylabel(r"$L \,\rm (erg\,s^{-1}\,\AA^{-1}$)")
+            ax.plot(np.exp(lambda_vals_ssp_log), spec_log_conv_prev / plot_norm, color="black", lw=0.5, alpha=0.5, label="Without AGN continuum")
+            ax.plot(np.exp(lambda_vals_ssp_log), spec_log_conv / plot_norm, color="black", label="With AGN continuum")
+            ax.set_ylabel(r"$L_{\lambda}(\lambda) \,\rm (10^{39}\,erg\,s^{-1}\,\AA^{-1}$)")
             ax.set_xlabel(r"Rest-frame wavelength ($\rm \AA$)")
-            ax.legend()
-            ax.set_ylim([0, None])
+            ax.legend(**legend_kwargs)
             ax.autoscale(enable="True", axis="x", tight=True)
+            ax.text(s="Adding AGN continuum", transform=ax.transAxes, **text_kwargs)
+            ax_ctr += 1
 
     ###########################################################################
     # 4d. Apply extinction
@@ -399,20 +413,21 @@ def create_mock_spectrum(sfh_mass_weighted, isochrones, sigma_star_kms, z, SNR,
         spec_log_conv *= 10**(-0.4 * A_vals)
 
         if plotit:
-            fig, ax = plt.subplots(nrows=1, ncols=1, figsize=(fig_w, fig_h))
-            ax.plot(np.exp(lambda_vals_ssp_log), spec_log_conv_prev, color="black", alpha=0.5, label="Before extinction")
-            ax.plot(np.exp(lambda_vals_ssp_log), spec_log_conv, color="black", label="After extinction")
-            ax.set_ylabel(r"$L \,\rm (erg\,s^{-1}\,\AA^{-1}$)")
+            ax = axs[ax_ctr]
+            ax.plot(np.exp(lambda_vals_ssp_log), spec_log_conv_prev / plot_norm, color="black", lw=0.5, alpha=0.5, label="Before extinction")
+            ax.plot(np.exp(lambda_vals_ssp_log), spec_log_conv / plot_norm, color="black", label="After extinction")
+            ax.set_ylabel(r"$L_{\lambda}(\lambda) \,\rm (10^{39}\,erg\,s^{-1}\,\AA^{-1}$)")
             ax.set_xlabel(r"Rest-frame wavelength ($\rm \AA$)")
-            ax.legend()
-            ax.set_ylim([0, None])
+            ax.legend(**legend_kwargs)
             ax.autoscale(enable="True", axis="x", tight=True)
+            ax.text(s="Applying extinction curve", transform=ax.transAxes, **text_kwargs)
+            ax_ctr += 1
 
     ###########################################################################
     # 5. Apply the redshift 
     lambda_vals_ssp_log_redshifted = lambda_vals_ssp_log + np.log(1 + z)
 
-    ###########################################################################
+    ##########################################################################
     # 6. Interpolate to the WiFeS wavelength grid (corresponding to the COMB data cube) using a cubic spline
     cs = CubicSpline(np.exp(lambda_vals_ssp_log_redshifted), spec_log_conv)
     spec_wifes_conv = cs(lambda_vals_wifes_oversampled_A)
@@ -421,7 +436,6 @@ def create_mock_spectrum(sfh_mass_weighted, isochrones, sigma_star_kms, z, SNR,
     # 7. Convolve by the line spread function
     lambda_vals_lsf_oversampled_A = (np.arange(100) - 50) * dlambda_wifes_A / 4
     kernel_lsf = np.exp(- (lambda_vals_lsf_oversampled_A**2) / (2 * sigma_LSF_A**2))
-
     spec_wifes_conv_lsf = convolve(spec_wifes_conv, kernel_lsf, mode="same") / np.nansum(kernel_lsf)
 
     ###########################################################################
@@ -441,14 +455,21 @@ def create_mock_spectrum(sfh_mass_weighted, isochrones, sigma_star_kms, z, SNR,
 
     # Plot to check
     if plotit:
-        fig, ax = plt.subplots(nrows=1, ncols=1, figsize=(fig_w, fig_h))
-        ax.errorbar(x=lambda_vals_wifes_A, y=spec, yerr=spec_err, linewidth=0.5, elinewidth=0.5, color="black")
- 
-        ax.set_title("Redshifted spectrum with noise")
+        fig, ax = plt.subplots(nrows=1, ncols=1, figsize=(7.5, 2.5))
+        fig.subplots_adjust(hspace=0, left=0.1, right=0.9,)
+        ax.errorbar(x=lambda_vals_wifes_A, y=spec / plot_norm, yerr=spec_err / plot_norm, linewidth=0.5, elinewidth=0.5, color="black")
         ax.set_xlabel(r"Observer-frame wavelength ($\rm \AA$)")
-        ax.set_ylabel(r"$L \,\rm (erg\,s^{-1}\,\AA^{-1}$)")
-        ax.set_ylim([0, None])
+        ax.set_ylabel(r"$L_{\lambda}(\lambda) \,\rm (10^{39}\,erg\,s^{-1}\,\AA^{-1}$)")
         ax.autoscale(enable="True", axis="x", tight=True)
+        ax.text(s="Final redshifted spectrum with noise", transform=ax.transAxes, **text_kwargs)
+        ax.grid(color="lightgrey", alpha=0.5)
+
+    # Tidy up the plot
+    if plotit: 
+        [ax.set_xticklabels([]) for ax in axs[:-1]]
+        [ax.set_xlabel("") for ax in axs[:-1]]
+        [ax.grid(color="lightgrey", alpha=0.5) for ax in axs]
+        [ax.set_ylim([0, ax.get_ylim()[1] * 1.15]) for ax in axs]
 
     ###########################################################################
     # 10. Return.
@@ -458,10 +479,12 @@ def create_mock_spectrum(sfh_mass_weighted, isochrones, sigma_star_kms, z, SNR,
 #%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 ###############################################################################
 if __name__ == "__main__":
-    from ppxftests.sfhutils import load_sfh
-    
+    from ppxftests.sfhutils import load_sfh, metallicities_padova, ages_padova
+    from ppxftests.ppxf_plot import plot_sfh_mass_weighted, plot_sfh_light_weighted, plot_sfr
+    import sys 
+
     savefigs = True  # If true, save figures for paper
-    fig_path = "/priv/meggs3/u5708159/ppxftests/figs/"
+    fig_path = "/priv/meggs3/u5708159/S7/mar23/ppxf/figs/paper/"
 
     ###########################################################################
     # Mock spectra options
@@ -469,40 +492,65 @@ if __name__ == "__main__":
     isochrones = "Padova"  # Set of isochrones to use 
     z = 0.05               # Redshift 
     SNR = 50              # S/N ratio
-    gal = 44               # Galaxy to load
+    gals = [int(g) for g in sys.argv[1:]]               # Galaxy to load
 
-    ###########################################################################
-    # DEFINE THE SFH
-    ###########################################################################
-    sfh_mw, sfh_lw, sfr_avg, sigma_star_kms = load_sfh(gal=gal, plotit=True)
+    for gal in gals:
+        ###########################################################################
+        # DEFINE THE SFH
+        ###########################################################################
+        sfh_mw, sfh_lw, sfr_avg, sigma_star_kms = load_sfh(gal=gal, plotit=False)
 
-    # Save 
-    if savefigs:
-        plt.figure(1).savefig(os.path.join(fig_path, f"ga{gal:004}_sfh_mw.pdf"), bbox_inches="tight", format="pdf")
-        plt.figure(2).savefig(os.path.join(fig_path, f"ga{gal:004}_sfh_lw.pdf"), bbox_inches="tight", format="pdf")
-        plt.figure(3).savefig(os.path.join(fig_path, f"ga{gal:004}_sfh_sfr.pdf"), bbox_inches="tight", format="pdf")
+        # Save 
+        fig, axs = plt.subplots(nrows=3, ncols=1, figsize=(10, 6))
+        fig.subplots_adjust(hspace=0)
+        bbox = axs[0].get_position()
+        bbox_new = [bbox.x0, bbox.y0, bbox.width, bbox.height * 0.7]
+        axs[0].set_position(bbox_new)
+        plot_sfh_mass_weighted(sfh_mw, ages_padova, metallicities_padova, ax=axs[2])
+        plot_sfh_light_weighted(sfh_lw, ages_padova, metallicities_padova, ax=axs[1])
+        plot_sfr(sfr_avg, ages_padova, metallicities_padova, ax=axs[0])
+        [ax.set_xticklabels([]) for ax in axs[:2]]
+        if savefigs:
+            fig.savefig(os.path.join(fig_path, f"ga{gal:04d}_sfh.pdf"), format="pdf", bbox_inches="tight")
 
-    ###########################################################################
-    # CREATE THE MOCK SPECTRUM
-    ###########################################################################
-    spec, spec_err, lambda_valsA = create_mock_spectrum(
-        sfh_mass_weighted=sfh_mw,
-        isochrones=isochrones,
-        ngascomponents=2, 
-        agn_continuum=True, alpha_nu=1.0, x_AGN=0.5,
-        sigma_gas_kms=[40, 350], v_gas_kms=[0, -100], 
-        L_Ha_erg_s=[0.5e40, 0.25e40], eline_model=["HII", "AGN"],
-        A_V=1.5,
-        z=z, SNR=SNR, sigma_star_kms=sigma_star_kms,
-        plotit=True)
+        ###########################################################################
+        # CREATE THE MOCK SPECTRUM
+        ###########################################################################
+        spec, spec_err, lambda_valsA = create_mock_spectrum(
+            sfh_mass_weighted=sfh_mw,
+            isochrones=isochrones,
+            ngascomponents=0,
+            agn_continuum=True, alpha_nu=1.0, x_AGN=0.5,
+            sigma_gas_kms=[40, 350], v_gas_kms=[0, -100], 
+            A_V=1.5,
+            z=z, SNR=SNR, sigma_star_kms=sigma_star_kms,
+            plotit=True)
 
-    # Save
-    if savefigs:
-        plt.figure(4).savefig(os.path.join(fig_path, f"ga{gal:004}_composite_spectra.pdf"), bbox_inches="tight", format="pdf")
-        plt.figure(5).savefig(os.path.join(fig_path, f"ga{gal:004}_losvd_conv.pdf"), bbox_inches="tight", format="pdf")
-        plt.figure(6).savefig(os.path.join(fig_path, f"ga{gal:004}_elines.pdf"), bbox_inches="tight", format="pdf")
-        plt.figure(7).savefig(os.path.join(fig_path, f"ga{gal:004}_agn_cont.pdf"), bbox_inches="tight", format="pdf")
-        plt.figure(8).savefig(os.path.join(fig_path, f"ga{gal:004}_extinction.pdf"), bbox_inches="tight", format="pdf")
-        plt.figure(9).savefig(os.path.join(fig_path, f"ga{gal:004}_spec.pdf"), bbox_inches="tight", format="pdf")
+        # Save
+        if savefigs:
+            plt.figure(2).savefig(os.path.join(fig_path, f"ga{gal:004}_mock_spec_procedure.pdf"), bbox_inches="tight", format="pdf")
+            plt.figure(3).savefig(os.path.join(fig_path, f"ga{gal:004}_mock_spec_final.pdf"), bbox_inches="tight", format="pdf")
 
+        ###########################################################################
+        # Plot SFHs for ga0001, ga0002, ga0011, ga0024.
+        ###########################################################################
+        gals = [1, 2, 11, 24]
+        fig, axs = fig, axs = plt.subplots(nrows=4, ncols=1, figsize=(13.3333, 8))
+        fig.subplots_adjust(hspace=0)
+        for gg, gal in enumerate(gals):
+            sfh_mw, sfh_lw, sfr_avg, sigma_star_kms = load_sfh(gal=gal, plotit=False)
+            M_tot = np.nansum(sfh_mw)
+            plot_sfh_light_weighted(sfh_lw, ages_padova, metallicities_padova, ax=axs[gg])
+            axs[gg].text(s=f"ga{gal:04d}" + r" - $\log_{10} (M_* [{\rm M_{\odot}}]) = %.3f$" % np.log10(M_tot), x=0.01, y=0.93, ha="left", va="top", transform=axs[gg].transAxes)
+        [ax.set_xticklabels([]) for ax in axs[:2]]
+        caxs = fig.get_axes()[4:]
+        [cax.set_visible(False) for cax in caxs[1:]]
+        cax = fig.get_axes()[4]
+        bbox = cax.get_position()
+        cax.set_position([bbox.x0, 
+                         fig.get_axes()[-1].get_position().y0, 
+                         bbox.width, 
+                         4 * bbox.height])
 
+        if savefigs:
+            fig.savefig(os.path.join(fig_path, f"sim_gal_sfhs.pdf"), bbox_inches="tight", format="pdf")
