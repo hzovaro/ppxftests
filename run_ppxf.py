@@ -221,8 +221,9 @@ def ppxf_helper(args):
 def add_stuff_to_df(pp_mc_list, pp_regul,
                     R_V=4.05, 
                     plotit=False,
-                    gal=None,  # Only used for plotting
+                    plot_fname=None,  # Only used for plotting
                     savefig=False,
+                    gal=None,  # Only used for printing error messages
                     ):
 
     """
@@ -239,10 +240,8 @@ def add_stuff_to_df(pp_mc_list, pp_regul,
     if plotit:
         fig_hist, axs_hist = plt.subplots(nrows=5, ncols=2, figsize=(12, 20))
         fig_hist.subplots_adjust(hspace=0.3, left=0.1, right=0.9, top=0.95, bottom=0.05)
-        if gal is not None:
-            fig_hist.suptitle(gal)
-        if savefig:
-            plot_fname = f"MC_distributions_{gal}.pdf"
+        if plot_fname is not None:
+            fig_hist.suptitle(plot_fname.replace("_", " "))
         ax_iter = 0
 
     # Fit parameters
@@ -255,71 +254,38 @@ def add_stuff_to_df(pp_mc_list, pp_regul,
     # 1-dimensional weights
     thisrow["Stellar template weights (MC mean)"] = np.nanmean([pp.weights_stellar for pp in pp_mc_list], axis=0)
     thisrow["Stellar template weights (MC error)"] = np.nanstd([pp.weights_stellar for pp in pp_mc_list], axis=0)
-    thisrow["Stellar template weights (MC 50th percentile)"] = np.quantile(a=[pp.weights_stellar for pp in pp_mc_list], q=0.5, axis=0)
-    thisrow["Stellar template weights (MC 16th percentile)"] = np.quantile(a=[pp.weights_stellar for pp in pp_mc_list], q=0.16, axis=0)
-    thisrow["Stellar template weights (MC 84th percentile)"] = np.quantile(a=[pp.weights_stellar for pp in pp_mc_list], q=0.84, axis=0)
+    thisrow["Stellar template weights (MC 50th percentile)"] = np.nanquantile(a=[pp.weights_stellar for pp in pp_mc_list], q=0.5, axis=0)
+    thisrow["Stellar template weights (MC 16th percentile)"] = np.nanquantile(a=[pp.weights_stellar for pp in pp_mc_list], q=0.16, axis=0)
+    thisrow["Stellar template weights (MC 84th percentile)"] = np.nanquantile(a=[pp.weights_stellar for pp in pp_mc_list], q=0.84, axis=0)
     thisrow["Stellar template weights (regularised)"] = pp_regul.weights_stellar
 
     # Stellar kinematics
     if pp_regul.fit_gas:
         thisrow["v_* (MC mean)"] = np.nanmean([pp.sol[0][0] for pp in pp_mc_list])
         thisrow["v_* (MC error)"] = np.nanstd([pp.sol[0][0] for pp in pp_mc_list])
-        thisrow["v_* (MC 50th percentile)"] = np.quantile(a=[pp.sol[0][0] for pp in pp_mc_list], q=0.5)
-        thisrow["v_* (MC 16th percentile)"] = np.quantile(a=[pp.sol[0][0] for pp in pp_mc_list], q=0.16)
-        thisrow["v_* (MC 84th percentile)"] = np.quantile(a=[pp.sol[0][0] for pp in pp_mc_list], q=0.84)
+        thisrow["v_* (MC 50th percentile)"] = np.nanquantile(a=[pp.sol[0][0] for pp in pp_mc_list], q=0.5)
+        thisrow["v_* (MC 16th percentile)"] = np.nanquantile(a=[pp.sol[0][0] for pp in pp_mc_list], q=0.16)
+        thisrow["v_* (MC 84th percentile)"] = np.nanquantile(a=[pp.sol[0][0] for pp in pp_mc_list], q=0.84)
         thisrow["v_* (regularised)"] = pp_regul.sol[0][0]
         thisrow["sigma_* (MC mean)"] = np.nanmean([pp.sol[0][1] for pp in pp_mc_list])
         thisrow["sigma_* (MC error)"] = np.nanstd([pp.sol[0][1] for pp in pp_mc_list])
-        thisrow["sigma_* (MC 50th percentile)"] = np.quantile(a=[pp.sol[0][1] for pp in pp_mc_list], q=0.5)
-        thisrow["sigma_* (MC 16th percentile)"] = np.quantile(a=[pp.sol[0][1] for pp in pp_mc_list], q=0.16)
-        thisrow["sigma_* (MC 84th percentile)"] = np.quantile(a=[pp.sol[0][1] for pp in pp_mc_list], q=0.84)
+        thisrow["sigma_* (MC 50th percentile)"] = np.nanquantile(a=[pp.sol[0][1] for pp in pp_mc_list], q=0.5)
+        thisrow["sigma_* (MC 16th percentile)"] = np.nanquantile(a=[pp.sol[0][1] for pp in pp_mc_list], q=0.16)
+        thisrow["sigma_* (MC 84th percentile)"] = np.nanquantile(a=[pp.sol[0][1] for pp in pp_mc_list], q=0.84)
         thisrow["sigma_* (regularised)"] = pp_regul.sol[0][1]
     else:
         thisrow["v_* (MC mean)"] = np.nanmean([pp.sol[0] for pp in pp_mc_list])
         thisrow["v_* (MC error)"] = np.nanstd([pp.sol[0] for pp in pp_mc_list])
-        thisrow["v_* (MC 50th percentile)"] = np.quantile(a=[pp.sol[0] for pp in pp_mc_list], q=0.5)
-        thisrow["v_* (MC 16th percentile)"] = np.quantile(a=[pp.sol[0] for pp in pp_mc_list], q=0.16)
-        thisrow["v_* (MC 84th percentile)"] = np.quantile(a=[pp.sol[0] for pp in pp_mc_list], q=0.84)
+        thisrow["v_* (MC 50th percentile)"] = np.nanquantile(a=[pp.sol[0] for pp in pp_mc_list], q=0.5)
+        thisrow["v_* (MC 16th percentile)"] = np.nanquantile(a=[pp.sol[0] for pp in pp_mc_list], q=0.16)
+        thisrow["v_* (MC 84th percentile)"] = np.nanquantile(a=[pp.sol[0] for pp in pp_mc_list], q=0.84)
         thisrow["v_* (regularised)"] = pp_regul.sol[0]
         thisrow["sigma_* (MC mean)"] = np.nanmean([pp.sol[1] for pp in pp_mc_list])
         thisrow["sigma_* (MC error)"] = np.nanstd([pp.sol[1] for pp in pp_mc_list])
-        thisrow["sigma_* (MC 50th percentile)"] = np.quantile(a=[pp.sol[1] for pp in pp_mc_list], q=0.5)
-        thisrow["sigma_* (MC 16th percentile)"] = np.quantile(a=[pp.sol[1] for pp in pp_mc_list], q=0.16)
-        thisrow["sigma_* (MC 84th percentile)"] = np.quantile(a=[pp.sol[1] for pp in pp_mc_list], q=0.84)
+        thisrow["sigma_* (MC 50th percentile)"] = np.nanquantile(a=[pp.sol[1] for pp in pp_mc_list], q=0.5)
+        thisrow["sigma_* (MC 16th percentile)"] = np.nanquantile(a=[pp.sol[1] for pp in pp_mc_list], q=0.16)
+        thisrow["sigma_* (MC 84th percentile)"] = np.nanquantile(a=[pp.sol[1] for pp in pp_mc_list], q=0.84)
         thisrow["sigma_* (regularised)"] = pp_regul.sol[1]
-
-    if plotit:
-        # Plot stellar kinematics distributions overlaid w/ quantiles etc. to check that it looks right
-        if pp_regul.fit_gas:
-            axs_hist.flat[ax_iter].hist([pp.sol[0][0] for pp in pp_mc_list], label="Distribution of MC measurements", bins=15)
-        else:
-            axs_hist.flat[ax_iter].hist([pp.sol[0] for pp in pp_mc_list], label="Distribution of MC measurements", bins=15)
-        axs_hist.flat[ax_iter].axvline(thisrow["v_* (MC 16th percentile)"], ls="--", color="grey", label="16th percentile")
-        axs_hist.flat[ax_iter].axvline(thisrow["v_* (MC 50th percentile)"], color="grey", label="50th percentile")
-        axs_hist.flat[ax_iter].axvline(thisrow["v_* (MC 84th percentile)"], ls="--", color="grey", label="84th percentile")
-        axs_hist.flat[ax_iter].axvline(thisrow["v_* (MC mean)"], color="k", label="Mean")
-        axs_hist.flat[ax_iter].axvline(thisrow["v_* (regularised)"], color="red", label="Measurement from regularised fit")
-        axs_hist.flat[ax_iter].axvspan(xmin=thisrow["v_* (MC mean)"] - thisrow["v_* (MC error)"], 
-                    xmax=thisrow["v_* (MC mean)"] + thisrow["v_* (MC error)"], color="pink", alpha=0.3, label=r"Mean $\pm 1\sigma$")
-        axs_hist.flat[ax_iter].set_title(r"$v_*$")
-        axs_hist.flat[ax_iter].set_xlabel(r"$v_*$ (km/s)")
-        axs_hist.flat[ax_iter].legend(fontsize=8, loc="upper left")
-        ax_iter += 1
-
-        if pp_regul.fit_gas:
-            axs_hist.flat[ax_iter].hist([pp.sol[0][1] for pp in pp_mc_list], bins=15)
-        else:
-            axs_hist.flat[ax_iter].hist([pp.sol[1] for pp in pp_mc_list], bins=15)
-        axs_hist.flat[ax_iter].axvline(thisrow["sigma_* (MC 16th percentile)"], ls="--", color="grey")
-        axs_hist.flat[ax_iter].axvline(thisrow["sigma_* (MC 50th percentile)"], color="grey")
-        axs_hist.flat[ax_iter].axvline(thisrow["sigma_* (MC 84th percentile)"], ls="--", color="grey")
-        axs_hist.flat[ax_iter].axvline(thisrow["sigma_* (MC mean)"], color="k")
-        axs_hist.flat[ax_iter].axvline(thisrow["sigma_* (regularised)"], color="red")
-        axs_hist.flat[ax_iter].axvspan(xmin=thisrow["sigma_* (MC mean)"] - thisrow["sigma_* (MC error)"], 
-                    xmax=thisrow["sigma_* (MC mean)"] + thisrow["sigma_* (MC error)"], color="pink", alpha=0.3)
-        axs_hist.flat[ax_iter].set_title(r"$\sigma_*$")
-        axs_hist.flat[ax_iter].set_xlabel(r"$\sigma_*$ (km/s)")
-        ax_iter += 1
 
     # Emisson lines: fluxes and kinematics
     if pp_regul.fit_gas:
@@ -329,55 +295,55 @@ def add_stuff_to_df(pp_mc_list, pp_regul,
         thisrow["F_gas erg/s (regularised)"] = pp_regul.gas_flux * pp_regul.norm
         thisrow["F_gas erg/s (MC mean)"] = np.nanmean([pp.gas_flux * pp.norm for pp in pp_mc_list], axis=0)
         thisrow["F_gas erg/s (MC error)"] = np.nanstd([pp.gas_flux * pp.norm for pp in pp_mc_list], axis=0)
-        thisrow["F_gas erg/s (MC 50th percentile)"] = np.quantile(a=[pp.gas_flux * pp.norm for pp in pp_mc_list], q=0.5, axis=0)
-        thisrow["F_gas erg/s (MC 16th percentile)"] = np.quantile(a=[pp.gas_flux * pp.norm for pp in pp_mc_list], q=0.16, axis=0)
-        thisrow["F_gas erg/s (MC 84th percentile)"] = np.quantile(a=[pp.gas_flux * pp.norm for pp in pp_mc_list], q=0.84, axis=0)
+        thisrow["F_gas erg/s (MC 50th percentile)"] = np.nanquantile(a=[pp.gas_flux * pp.norm for pp in pp_mc_list], q=0.5, axis=0)
+        thisrow["F_gas erg/s (MC 16th percentile)"] = np.nanquantile(a=[pp.gas_flux * pp.norm for pp in pp_mc_list], q=0.16, axis=0)
+        thisrow["F_gas erg/s (MC 84th percentile)"] = np.nanquantile(a=[pp.gas_flux * pp.norm for pp in pp_mc_list], q=0.84, axis=0)
 
         thisrow["v_gas (regularised)"] = pp_regul.v_gas
         thisrow["v_gas (MC mean)"] = np.nanmean([pp.v_gas for pp in pp_mc_list], axis=0)
         thisrow["v_gas (MC error)"] = np.nanstd([pp.v_gas for pp in pp_mc_list], axis=0)
-        thisrow["v_gas (MC 50th percentile)"] = np.quantile(a=[pp.v_gas for pp in pp_mc_list], q=0.5, axis=0)
-        thisrow["v_gas (MC 16th percentile)"] = np.quantile(a=[pp.v_gas for pp in pp_mc_list], q=0.16, axis=0)
-        thisrow["v_gas (MC 84th percentile)"] = np.quantile(a=[pp.v_gas for pp in pp_mc_list], q=0.84, axis=0)
+        thisrow["v_gas (MC 50th percentile)"] = np.nanquantile(a=[pp.v_gas for pp in pp_mc_list], q=0.5, axis=0)
+        thisrow["v_gas (MC 16th percentile)"] = np.nanquantile(a=[pp.v_gas for pp in pp_mc_list], q=0.16, axis=0)
+        thisrow["v_gas (MC 84th percentile)"] = np.nanquantile(a=[pp.v_gas for pp in pp_mc_list], q=0.84, axis=0)
         thisrow["sigma_gas (regularised)"] = pp_regul.sigma_gas
         thisrow["sigma_gas (MC mean)"] = np.nanmean([pp.sigma_gas for pp in pp_mc_list], axis=0)
         thisrow["sigma_gas (MC error)"] = np.nanstd([pp.sigma_gas for pp in pp_mc_list], axis=0)
-        thisrow["sigma_gas (MC 50th percentile)"] = np.quantile(a=[pp.sigma_gas for pp in pp_mc_list], q=0.5, axis=0)
-        thisrow["sigma_gas (MC 16th percentile)"] = np.quantile(a=[pp.sigma_gas for pp in pp_mc_list], q=0.16, axis=0)
-        thisrow["sigma_gas (MC 84th percentile)"] = np.quantile(a=[pp.sigma_gas for pp in pp_mc_list], q=0.84, axis=0)
+        thisrow["sigma_gas (MC 50th percentile)"] = np.nanquantile(a=[pp.sigma_gas for pp in pp_mc_list], q=0.5, axis=0)
+        thisrow["sigma_gas (MC 16th percentile)"] = np.nanquantile(a=[pp.sigma_gas for pp in pp_mc_list], q=0.16, axis=0)
+        thisrow["sigma_gas (MC 84th percentile)"] = np.nanquantile(a=[pp.sigma_gas for pp in pp_mc_list], q=0.84, axis=0)
     else:
         thisrow["Number of emission line components in fit"] = 0
   
     # Light-weighted SFH (1D)
     thisrow["SFH LW 1D (MC mean)"] = np.nanmean(np.array([pp.sfh_lw_1D for pp in pp_mc_list]), axis=0)
     thisrow["SFH LW 1D (MC error)"] = np.nanstd(np.array([pp.sfh_lw_1D for pp in pp_mc_list]), axis=0)
-    thisrow["SFH LW 1D (MC 50th percentile)"] = np.quantile(a=np.array([pp.sfh_lw_1D for pp in pp_mc_list]), q=0.5, axis=0)
-    thisrow["SFH LW 1D (MC 16th percentile)"] = np.quantile(a=np.array([pp.sfh_lw_1D for pp in pp_mc_list]), q=0.16, axis=0)
-    thisrow["SFH LW 1D (MC 84th percentile)"] = np.quantile(a=np.array([pp.sfh_lw_1D for pp in pp_mc_list]), q=0.84, axis=0)
+    thisrow["SFH LW 1D (MC 50th percentile)"] = np.nanquantile(a=np.array([pp.sfh_lw_1D for pp in pp_mc_list]), q=0.5, axis=0)
+    thisrow["SFH LW 1D (MC 16th percentile)"] = np.nanquantile(a=np.array([pp.sfh_lw_1D for pp in pp_mc_list]), q=0.16, axis=0)
+    thisrow["SFH LW 1D (MC 84th percentile)"] = np.nanquantile(a=np.array([pp.sfh_lw_1D for pp in pp_mc_list]), q=0.84, axis=0)
     thisrow["SFH LW 1D (regularised)"] = pp_regul.sfh_lw_1D
 
     # Mass-weighted SFH (1D)
     thisrow["SFH MW 1D (MC mean)"] = np.nanmean(np.array([pp.sfh_mw_1D for pp in pp_mc_list]), axis=0)
     thisrow["SFH MW 1D (MC error)"] = np.nanstd(np.array([pp.sfh_mw_1D for pp in pp_mc_list]), axis=0)
-    thisrow["SFH MW 1D (MC 50th percentile)"] = np.quantile(a=np.array([pp.sfh_mw_1D for pp in pp_mc_list]), q=0.5, axis=0)
-    thisrow["SFH MW 1D (MC 16th percentile)"] = np.quantile(a=np.array([pp.sfh_mw_1D for pp in pp_mc_list]), q=0.16, axis=0)
-    thisrow["SFH MW 1D (MC 84th percentile)"] = np.quantile(a=np.array([pp.sfh_mw_1D for pp in pp_mc_list]), q=0.84, axis=0)
+    thisrow["SFH MW 1D (MC 50th percentile)"] = np.nanquantile(a=np.array([pp.sfh_mw_1D for pp in pp_mc_list]), q=0.5, axis=0)
+    thisrow["SFH MW 1D (MC 16th percentile)"] = np.nanquantile(a=np.array([pp.sfh_mw_1D for pp in pp_mc_list]), q=0.16, axis=0)
+    thisrow["SFH MW 1D (MC 84th percentile)"] = np.nanquantile(a=np.array([pp.sfh_mw_1D for pp in pp_mc_list]), q=0.84, axis=0)
     thisrow["SFH MW 1D (regularised)"] = pp_regul.sfh_mw_1D
 
     # Cumulative mass (log)
     thisrow["Cumulative mass vs. age cutoff (MC mean)"] = np.nanmean(np.array([[compute_cumulative_mass(pp.sfh_mw_1D, isochrones=isochrones, age_thresh_upper=a) for a in ages[1:]] for pp in pp_mc_list]), axis=0)
     thisrow["Cumulative mass vs. age cutoff (MC error)"] = np.nanstd(np.array([[compute_cumulative_mass(pp.sfh_mw_1D, isochrones=isochrones, age_thresh_upper=a) for a in ages[1:]] for pp in pp_mc_list]), axis=0)
-    thisrow["Cumulative mass vs. age cutoff (MC 50th percentile)"] = np.quantile(a=np.array([[compute_cumulative_mass(pp.sfh_mw_1D, isochrones=isochrones, age_thresh_upper=a) for a in ages[1:]] for pp in pp_mc_list]), q=0.5, axis=0)
-    thisrow["Cumulative mass vs. age cutoff (MC 16th percentile)"] = np.quantile(a=np.array([[compute_cumulative_mass(pp.sfh_mw_1D, isochrones=isochrones, age_thresh_upper=a) for a in ages[1:]] for pp in pp_mc_list]), q=0.16, axis=0)
-    thisrow["Cumulative mass vs. age cutoff (MC 84th percentile)"] = np.quantile(a=np.array([[compute_cumulative_mass(pp.sfh_mw_1D, isochrones=isochrones, age_thresh_upper=a) for a in ages[1:]] for pp in pp_mc_list]), q=0.84, axis=0)
+    thisrow["Cumulative mass vs. age cutoff (MC 50th percentile)"] = np.nanquantile(a=np.array([[compute_cumulative_mass(pp.sfh_mw_1D, isochrones=isochrones, age_thresh_upper=a) for a in ages[1:]] for pp in pp_mc_list]), q=0.5, axis=0)
+    thisrow["Cumulative mass vs. age cutoff (MC 16th percentile)"] = np.nanquantile(a=np.array([[compute_cumulative_mass(pp.sfh_mw_1D, isochrones=isochrones, age_thresh_upper=a) for a in ages[1:]] for pp in pp_mc_list]), q=0.16, axis=0)
+    thisrow["Cumulative mass vs. age cutoff (MC 84th percentile)"] = np.nanquantile(a=np.array([[compute_cumulative_mass(pp.sfh_mw_1D, isochrones=isochrones, age_thresh_upper=a) for a in ages[1:]] for pp in pp_mc_list]), q=0.84, axis=0)
     thisrow["Cumulative mass vs. age cutoff (regularised)"] = np.array([compute_cumulative_mass(pp_regul.sfh_mw_1D, isochrones=isochrones, age_thresh_upper=a) for a in ages[1:]])
 
     # Cumulative light (log)
     thisrow["Cumulative light vs. age cutoff (MC mean)"] = np.nanmean(np.array([[compute_cumulative_light(pp.sfh_lw_1D, isochrones=isochrones, age_thresh_upper=a) for a in ages[1:]] for pp in pp_mc_list]), axis=0)
     thisrow["Cumulative light vs. age cutoff (MC error)"] = np.nanstd(np.array([[compute_cumulative_light(pp.sfh_lw_1D, isochrones=isochrones, age_thresh_upper=a) for a in ages[1:]] for pp in pp_mc_list]), axis=0)
-    thisrow["Cumulative light vs. age cutoff (MC 50th percentile)"] = np.quantile(a=np.array([[compute_cumulative_light(pp.sfh_lw_1D, isochrones=isochrones, age_thresh_upper=a) for a in ages[1:]] for pp in pp_mc_list]), q=0.5, axis=0)
-    thisrow["Cumulative light vs. age cutoff (MC 16th percentile)"] = np.quantile(a=np.array([[compute_cumulative_light(pp.sfh_lw_1D, isochrones=isochrones, age_thresh_upper=a) for a in ages[1:]] for pp in pp_mc_list]), q=0.16, axis=0)
-    thisrow["Cumulative light vs. age cutoff (MC 84th percentile)"] = np.quantile(a=np.array([[compute_cumulative_light(pp.sfh_lw_1D, isochrones=isochrones, age_thresh_upper=a) for a in ages[1:]] for pp in pp_mc_list]), q=0.84, axis=0)
+    thisrow["Cumulative light vs. age cutoff (MC 50th percentile)"] = np.nanquantile(a=np.array([[compute_cumulative_light(pp.sfh_lw_1D, isochrones=isochrones, age_thresh_upper=a) for a in ages[1:]] for pp in pp_mc_list]), q=0.5, axis=0)
+    thisrow["Cumulative light vs. age cutoff (MC 16th percentile)"] = np.nanquantile(a=np.array([[compute_cumulative_light(pp.sfh_lw_1D, isochrones=isochrones, age_thresh_upper=a) for a in ages[1:]] for pp in pp_mc_list]), q=0.16, axis=0)
+    thisrow["Cumulative light vs. age cutoff (MC 84th percentile)"] = np.nanquantile(a=np.array([[compute_cumulative_light(pp.sfh_lw_1D, isochrones=isochrones, age_thresh_upper=a) for a in ages[1:]] for pp in pp_mc_list]), q=0.84, axis=0)
     thisrow["Cumulative light vs. age cutoff (regularised)"] = np.array([compute_cumulative_light(pp_regul.sfh_lw_1D, isochrones=isochrones, age_thresh_upper=a) for a in ages[1:]])
 
     # Cumulative mass fraction (log)
@@ -400,9 +366,9 @@ def add_stuff_to_df(pp_mc_list, pp_regul,
     M_tot_MC_err = np.nanstd(M_tot_vals)
     M_frac_MC_mean = np.nanmean(M_frac_vals, axis=0)
     M_frac_MC_err = np.nanstd(M_frac_vals, axis=0)
-    M_frac_MC_50th = np.quantile(a=M_frac_vals, axis=0, q=0.50)
-    M_frac_MC_16th = np.quantile(a=M_frac_vals, axis=0, q=0.16)
-    M_frac_MC_84th = np.quantile(a=M_frac_vals, axis=0, q=0.84)
+    M_frac_MC_50th = np.nanquantile(a=M_frac_vals, axis=0, q=0.50)
+    M_frac_MC_16th = np.nanquantile(a=M_frac_vals, axis=0, q=0.16)
+    M_frac_MC_84th = np.nanquantile(a=M_frac_vals, axis=0, q=0.84)
     M_tot_regul = np.nansum(pp_regul.sfh_mw_1D)
     M_cum_regul = np.array([compute_cumulative_mass(pp_regul.sfh_mw_1D, isochrones=isochrones, age_thresh_upper=a, log_result=False) for a in ages[1:]])
     M_frac_regul = M_cum_regul / M_tot_regul
@@ -442,14 +408,14 @@ def add_stuff_to_df(pp_mc_list, pp_regul,
     # Compute mean/std values
     L_tot_MC_mean = np.nanmean(L_tot_vals)
     L_tot_MC_err = np.nanstd(L_tot_vals)
-    L_tot_MC_50th = np.quantile(a=L_tot_vals, q=0.50)
-    L_tot_MC_16th = np.quantile(a=L_tot_vals, q=0.16)
-    L_tot_MC_84th = np.quantile(a=L_tot_vals, q=0.84)
+    L_tot_MC_50th = np.nanquantile(a=L_tot_vals, q=0.50)
+    L_tot_MC_16th = np.nanquantile(a=L_tot_vals, q=0.16)
+    L_tot_MC_84th = np.nanquantile(a=L_tot_vals, q=0.84)
     L_frac_MC_mean = np.nanmean(L_frac_vals, axis=0)
     L_frac_MC_err = np.nanstd(L_frac_vals, axis=0)
-    L_frac_MC_50th = np.quantile(a=L_frac_vals, axis=0, q=0.50)
-    L_frac_MC_16th = np.quantile(a=L_frac_vals, axis=0, q=0.16)
-    L_frac_MC_84th = np.quantile(a=L_frac_vals, axis=0, q=0.84)
+    L_frac_MC_50th = np.nanquantile(a=L_frac_vals, axis=0, q=0.50)
+    L_frac_MC_16th = np.nanquantile(a=L_frac_vals, axis=0, q=0.16)
+    L_frac_MC_84th = np.nanquantile(a=L_frac_vals, axis=0, q=0.84)
     L_tot_regul = np.nansum(pp_regul.sfh_lw_1D)
     L_cum_regul = np.array([compute_cumulative_light(pp_regul.sfh_lw_1D, isochrones=isochrones, age_thresh_upper=a, log_result=False) for a in ages[1:]])
     L_frac_regul = L_cum_regul / L_tot_regul
@@ -477,45 +443,46 @@ def add_stuff_to_df(pp_mc_list, pp_regul,
     # Mass-weighted age as a function of time (log)
     thisrow["Mass-weighted age vs. age cutoff (MC mean)"] = np.nanmean(np.array([[compute_mw_age(pp.sfh_mw_1D, isochrones=isochrones, age_thresh_upper=a)[0] for a in ages[1:]] for pp in pp_mc_list]), axis=0)
     thisrow["Mass-weighted age vs. age cutoff (MC error)"] = np.nanstd(np.array([[compute_mw_age(pp.sfh_mw_1D, isochrones=isochrones, age_thresh_upper=a)[0] for a in ages[1:]] for pp in pp_mc_list]), axis=0)
-    thisrow["Mass-weighted age vs. age cutoff (MC 50th percentile)"] = np.quantile(a=np.array([[compute_mw_age(pp.sfh_mw_1D, isochrones=isochrones, age_thresh_upper=a)[0] for a in ages[1:]] for pp in pp_mc_list]), q=0.5, axis=0)
-    thisrow["Mass-weighted age vs. age cutoff (MC 16th percentile)"] = np.quantile(a=np.array([[compute_mw_age(pp.sfh_mw_1D, isochrones=isochrones, age_thresh_upper=a)[0] for a in ages[1:]] for pp in pp_mc_list]), q=0.16, axis=0)
-    thisrow["Mass-weighted age vs. age cutoff (MC 84th percentile)"] = np.quantile(a=np.array([[compute_mw_age(pp.sfh_mw_1D, isochrones=isochrones, age_thresh_upper=a)[0] for a in ages[1:]] for pp in pp_mc_list]), q=0.84, axis=0)
+    thisrow["Mass-weighted age vs. age cutoff (MC 50th percentile)"] = np.nanquantile(a=np.array([[compute_mw_age(pp.sfh_mw_1D, isochrones=isochrones, age_thresh_upper=a)[0] for a in ages[1:]] for pp in pp_mc_list]), q=0.5, axis=0)
+    thisrow["Mass-weighted age vs. age cutoff (MC 16th percentile)"] = np.nanquantile(a=np.array([[compute_mw_age(pp.sfh_mw_1D, isochrones=isochrones, age_thresh_upper=a)[0] for a in ages[1:]] for pp in pp_mc_list]), q=0.16, axis=0)
+    thisrow["Mass-weighted age vs. age cutoff (MC 84th percentile)"] = np.nanquantile(a=np.array([[compute_mw_age(pp.sfh_mw_1D, isochrones=isochrones, age_thresh_upper=a)[0] for a in ages[1:]] for pp in pp_mc_list]), q=0.84, axis=0)
     thisrow["Mass-weighted age vs. age cutoff (regularised)"] = np.array([compute_mw_age(pp_regul.sfh_mw_1D, isochrones=isochrones, age_thresh_upper=a)[0] for a in ages[1:]])
 
     # Light-weighted age as a function of time (log)
     thisrow["Light-weighted age vs. age cutoff (MC mean)"] = np.nanmean(np.array([[compute_lw_age(pp.sfh_lw_1D, isochrones=isochrones, age_thresh_upper=a)[0] for a in ages[1:]] for pp in pp_mc_list]), axis=0)
     thisrow["Light-weighted age vs. age cutoff (MC error)"] = np.nanstd(np.array([[compute_lw_age(pp.sfh_lw_1D, isochrones=isochrones, age_thresh_upper=a)[0] for a in ages[1:]] for pp in pp_mc_list]), axis=0)
-    thisrow["Light-weighted age vs. age cutoff (MC 50th percentile)"] = np.quantile(a=np.array([[compute_lw_age(pp.sfh_lw_1D, isochrones=isochrones, age_thresh_upper=a)[0] for a in ages[1:]] for pp in pp_mc_list]), q=0.5, axis=0)
-    thisrow["Light-weighted age vs. age cutoff (MC 16th percentile)"] = np.quantile(a=np.array([[compute_lw_age(pp.sfh_lw_1D, isochrones=isochrones, age_thresh_upper=a)[0] for a in ages[1:]] for pp in pp_mc_list]), q=0.16, axis=0)
-    thisrow["Light-weighted age vs. age cutoff (MC 84th percentile)"] = np.quantile(a=np.array([[compute_lw_age(pp.sfh_lw_1D, isochrones=isochrones, age_thresh_upper=a)[0] for a in ages[1:]] for pp in pp_mc_list]), q=0.84, axis=0)
+    thisrow["Light-weighted age vs. age cutoff (MC 50th percentile)"] = np.nanquantile(a=np.array([[compute_lw_age(pp.sfh_lw_1D, isochrones=isochrones, age_thresh_upper=a)[0] for a in ages[1:]] for pp in pp_mc_list]), q=0.5, axis=0)
+    thisrow["Light-weighted age vs. age cutoff (MC 16th percentile)"] = np.nanquantile(a=np.array([[compute_lw_age(pp.sfh_lw_1D, isochrones=isochrones, age_thresh_upper=a)[0] for a in ages[1:]] for pp in pp_mc_list]), q=0.16, axis=0)
+    thisrow["Light-weighted age vs. age cutoff (MC 84th percentile)"] = np.nanquantile(a=np.array([[compute_lw_age(pp.sfh_lw_1D, isochrones=isochrones, age_thresh_upper=a)[0] for a in ages[1:]] for pp in pp_mc_list]), q=0.84, axis=0)
     thisrow["Light-weighted age vs. age cutoff (regularised)"] = np.array([compute_lw_age(pp_regul.sfh_lw_1D, isochrones=isochrones, age_thresh_upper=a)[0] for a in ages[1:]])
 
     # Plot the age distributions overlaid with quantiles to see what they look like & check that everything looks right 
     if plotit:
         for age_idx in [28, 48, len(ages) - 2]:
-            axs_hist.flat[ax_iter].hist([compute_mw_age(pp.sfh_mw_1D, isochrones=isochrones, age_thresh_upper=ages[age_idx])[0] for pp in pp_mc_list], bins=15)
-            try:
-                axs_hist.flat[ax_iter].axvline(thisrow["Mass-weighted age vs. age cutoff (MC 16th percentile)"][age_idx], ls="--", color="grey")
-            except:
-                Tracer()()
-            axs_hist.flat[ax_iter].axvline(thisrow["Mass-weighted age vs. age cutoff (MC 50th percentile)"][age_idx], color="grey")
-            axs_hist.flat[ax_iter].axvline(thisrow["Mass-weighted age vs. age cutoff (MC 84th percentile)"][age_idx], ls="--", color="grey")
-            axs_hist.flat[ax_iter].axvline(thisrow["Mass-weighted age vs. age cutoff (MC mean)"][age_idx], color="k")
-            axs_hist.flat[ax_iter].axvline(thisrow["Mass-weighted age vs. age cutoff (regularised)"][age_idx], color="red")
-            axs_hist.flat[ax_iter].axvspan(xmin=thisrow["Mass-weighted age vs. age cutoff (MC mean)"][age_idx] - thisrow["Mass-weighted age vs. age cutoff (MC error)"][age_idx], 
-                        xmax=thisrow["Mass-weighted age vs. age cutoff (MC mean)"][age_idx] + thisrow["Mass-weighted age vs. age cutoff (MC error)"][age_idx], color="pink", alpha=0.3)
+            mw_ages = [compute_mw_age(pp.sfh_mw_1D, isochrones=isochrones, age_thresh_upper=ages[age_idx])[0] for pp in pp_mc_list]
+            if not all(np.isnan(mw_ages)):
+                axs_hist.flat[ax_iter].hist(mw_ages, bins=15)
+            axs_hist.flat[ax_iter].axvline(thisrow["Mass-weighted age vs. age cutoff (MC 16th percentile)"][age_idx - 1], ls="--", color="grey")
+            axs_hist.flat[ax_iter].axvline(thisrow["Mass-weighted age vs. age cutoff (MC 50th percentile)"][age_idx - 1], color="grey")
+            axs_hist.flat[ax_iter].axvline(thisrow["Mass-weighted age vs. age cutoff (MC 84th percentile)"][age_idx - 1], ls="--", color="grey")
+            axs_hist.flat[ax_iter].axvline(thisrow["Mass-weighted age vs. age cutoff (MC mean)"][age_idx - 1], color="k")
+            axs_hist.flat[ax_iter].axvline(thisrow["Mass-weighted age vs. age cutoff (regularised)"][age_idx - 1], color="red")
+            axs_hist.flat[ax_iter].axvspan(xmin=thisrow["Mass-weighted age vs. age cutoff (MC mean)"][age_idx - 1] - thisrow["Mass-weighted age vs. age cutoff (MC error)"][age_idx - 1], 
+                        xmax=thisrow["Mass-weighted age vs. age cutoff (MC mean)"][age_idx - 1] + thisrow["Mass-weighted age vs. age cutoff (MC error)"][age_idx - 1], color="pink", alpha=0.3)
             axs_hist.flat[ax_iter].set_title(f"Mass-weighted age below {ages[age_idx] / 1e9:.2f} Gyr")
             axs_hist.flat[ax_iter].set_xlabel("Mass-weighted age (log yr)")
             ax_iter += 1
 
-            axs_hist.flat[ax_iter].hist([compute_lw_age(pp.sfh_lw_1D, isochrones=isochrones, age_thresh_upper=ages[age_idx])[0] for pp in pp_mc_list], bins=15)
-            axs_hist.flat[ax_iter].axvline(thisrow["Light-weighted age vs. age cutoff (MC 16th percentile)"][age_idx], ls="--", color="grey")
-            axs_hist.flat[ax_iter].axvline(thisrow["Light-weighted age vs. age cutoff (MC 50th percentile)"][age_idx], color="grey")
-            axs_hist.flat[ax_iter].axvline(thisrow["Light-weighted age vs. age cutoff (MC 84th percentile)"][age_idx], ls="--", color="grey")
-            axs_hist.flat[ax_iter].axvline(thisrow["Light-weighted age vs. age cutoff (MC mean)"][age_idx], color="k")
-            axs_hist.flat[ax_iter].axvline(thisrow["Light-weighted age vs. age cutoff (regularised)"][age_idx], color="red")
-            axs_hist.flat[ax_iter].axvspan(xmin=thisrow["Light-weighted age vs. age cutoff (MC mean)"][age_idx] - thisrow["Light-weighted age vs. age cutoff (MC error)"][age_idx], 
-                        xmax=thisrow["Light-weighted age vs. age cutoff (MC mean)"][age_idx] + thisrow["Light-weighted age vs. age cutoff (MC error)"][age_idx], color="pink", alpha=0.3)
+            lw_ages = [compute_lw_age(pp.sfh_lw_1D, isochrones=isochrones, age_thresh_upper=ages[age_idx])[0] for pp in pp_mc_list]
+            if not all(np.isnan(lw_ages)):
+                axs_hist.flat[ax_iter].hist(lw_ages, bins=15)
+            axs_hist.flat[ax_iter].axvline(thisrow["Light-weighted age vs. age cutoff (MC 16th percentile)"][age_idx - 1], ls="--", color="grey")
+            axs_hist.flat[ax_iter].axvline(thisrow["Light-weighted age vs. age cutoff (MC 50th percentile)"][age_idx - 1], color="grey")
+            axs_hist.flat[ax_iter].axvline(thisrow["Light-weighted age vs. age cutoff (MC 84th percentile)"][age_idx - 1], ls="--", color="grey")
+            axs_hist.flat[ax_iter].axvline(thisrow["Light-weighted age vs. age cutoff (MC mean)"][age_idx - 1], color="k")
+            axs_hist.flat[ax_iter].axvline(thisrow["Light-weighted age vs. age cutoff (regularised)"][age_idx - 1], color="red")
+            axs_hist.flat[ax_iter].axvspan(xmin=thisrow["Light-weighted age vs. age cutoff (MC mean)"][age_idx - 1] - thisrow["Light-weighted age vs. age cutoff (MC error)"][age_idx - 1], 
+                        xmax=thisrow["Light-weighted age vs. age cutoff (MC mean)"][age_idx - 1] + thisrow["Light-weighted age vs. age cutoff (MC error)"][age_idx - 1], color="pink", alpha=0.3)
             axs_hist.flat[ax_iter].set_title(f"Light-weighted age below {ages[age_idx] / 1e9:.2f} Gyr")
             axs_hist.flat[ax_iter].set_xlabel("Light-weighted age (log yr)")
             ax_iter += 1
@@ -524,20 +491,22 @@ def add_stuff_to_df(pp_mc_list, pp_regul,
     if pp_regul.reddening is not None:
         thisrow["A_V (MC mean)"] = R_V * np.nanmean([pp.reddening for pp in pp_mc_list])
         thisrow["A_V (MC error)"] = R_V * np.nanstd([pp.reddening for pp in pp_mc_list])
-        thisrow["A_V (MC 50th percentile)"] = R_V * np.quantile(a=[pp.reddening for pp in pp_mc_list], q=0.5)
-        thisrow["A_V (MC 16th percentile)"] = R_V * np.quantile(a=[pp.reddening for pp in pp_mc_list], q=0.16)
-        thisrow["A_V (MC 84th percentile)"] = R_V * np.quantile(a=[pp.reddening for pp in pp_mc_list], q=0.84)
+        thisrow["A_V (MC 50th percentile)"] = R_V * np.nanquantile(a=[pp.reddening for pp in pp_mc_list], q=0.5)
+        thisrow["A_V (MC 16th percentile)"] = R_V * np.nanquantile(a=[pp.reddening for pp in pp_mc_list], q=0.16)
+        thisrow["A_V (MC 84th percentile)"] = R_V * np.nanquantile(a=[pp.reddening for pp in pp_mc_list], q=0.84)
         thisrow["A_V (regularised)"] = pp_regul.reddening * R_V
         thisrow["10^-0.4A(lambda) (MC mean)"] = np.nanmean(np.array([pp.mpoly for pp in pp_mc_list]), axis=0)
         thisrow["10^-0.4A(lambda) (MC error)"] = np.nanstd(np.array([pp.mpoly for pp in pp_mc_list]), axis=0)
-        thisrow["10^-0.4A(lambda) (MC 50th percentile)"] = np.quantile(a=np.array([pp.mpoly for pp in pp_mc_list]), q=0.5, axis=0)
-        thisrow["10^-0.4A(lambda) (MC 16th percentile)"] = np.quantile(a=np.array([pp.mpoly for pp in pp_mc_list]), q=0.16, axis=0)
-        thisrow["10^-0.4A(lambda) (MC 84th percentile)"] = np.quantile(a=np.array([pp.mpoly for pp in pp_mc_list]), q=0.84, axis=0)
+        thisrow["10^-0.4A(lambda) (MC 50th percentile)"] = np.nanquantile(a=np.array([pp.mpoly for pp in pp_mc_list]), q=0.5, axis=0)
+        thisrow["10^-0.4A(lambda) (MC 16th percentile)"] = np.nanquantile(a=np.array([pp.mpoly for pp in pp_mc_list]), q=0.16, axis=0)
+        thisrow["10^-0.4A(lambda) (MC 84th percentile)"] = np.nanquantile(a=np.array([pp.mpoly for pp in pp_mc_list]), q=0.84, axis=0)
         thisrow["10^-0.4A(lambda) (regularised)"] = pp_regul.mpoly
 
         # Plot the A_V distribution overlaid w/ quantiles etc. to check that it looks right
         if plotit:
-            axs_hist.flat[ax_iter].hist(R_V * np.array([pp.reddening for pp in pp_mc_list]), bins=15)
+            a_v_vals = R_V * np.array([pp.reddening for pp in pp_mc_list])
+            if not all(np.isnan(a_v_vals)):
+                axs_hist.flat[ax_iter].hist(a_v_vals, bins=15)
             axs_hist.flat[ax_iter].axvline(thisrow["A_V (MC 16th percentile)"], ls="--", color="grey")
             axs_hist.flat[ax_iter].axvline(thisrow["A_V (MC 50th percentile)"], color="grey")
             axs_hist.flat[ax_iter].axvline(thisrow["A_V (MC 84th percentile)"], ls="--", color="grey")
@@ -553,16 +522,16 @@ def add_stuff_to_df(pp_mc_list, pp_regul,
         if pp_regul.mpoly is not None:
             thisrow["Multiplicative polynomial (MC mean)"] = np.nanmean(np.array([pp.mpoly for pp in pp_mc_list]), axis=0)
             thisrow["Multiplicative polynomial (MC error)"] = np.nanstd(np.array([pp.mpoly for pp in pp_mc_list]), axis=0)
-            thisrow["Multiplicative polynomial (MC 50th percentile)"] = np.quantile(a=np.array([pp.mpoly for pp in pp_mc_list]), q=0.5, axis=0)
-            thisrow["Multiplicative polynomial (MC 16th percentile)"] = np.quantile(a=np.array([pp.mpoly for pp in pp_mc_list]), q=0.16, axis=0)
-            thisrow["Multiplicative polynomial (MC 84th percentile)"] = np.quantile(a=np.array([pp.mpoly for pp in pp_mc_list]), q=0.84, axis=0)
+            thisrow["Multiplicative polynomial (MC 50th percentile)"] = np.nanquantile(a=np.array([pp.mpoly for pp in pp_mc_list]), q=0.5, axis=0)
+            thisrow["Multiplicative polynomial (MC 16th percentile)"] = np.nanquantile(a=np.array([pp.mpoly for pp in pp_mc_list]), q=0.16, axis=0)
+            thisrow["Multiplicative polynomial (MC 84th percentile)"] = np.nanquantile(a=np.array([pp.mpoly for pp in pp_mc_list]), q=0.84, axis=0)
             thisrow["Multiplicative polynomial (regularised)"] = pp_regul.mpoly
         elif pp_regul.apoly is not None:
             thisrow["Additive polynomial (MC mean)"] = np.nanmean(np.array([pp.apoly for pp in pp_mc_list]), axis=0)
             thisrow["Additive polynomial (MC error)"] = np.nanstd(np.array([pp.apoly for pp in pp_mc_list]), axis=0)
-            thisrow["Additive polynomial (MC 50th percentile)"] = np.quantile(a=np.array([pp.apoly for pp in pp_mc_list]), q=0.5, axis=0)
-            thisrow["Additive polynomial (MC 16th percentile)"] = np.quantile(a=np.array([pp.apoly for pp in pp_mc_list]), q=0.16, axis=0)
-            thisrow["Additive polynomial (MC 84th percentile)"] = np.quantile(a=np.array([pp.apoly for pp in pp_mc_list]), q=0.84, axis=0)
+            thisrow["Additive polynomial (MC 50th percentile)"] = np.nanquantile(a=np.array([pp.apoly for pp in pp_mc_list]), q=0.5, axis=0)
+            thisrow["Additive polynomial (MC 16th percentile)"] = np.nanquantile(a=np.array([pp.apoly for pp in pp_mc_list]), q=0.16, axis=0)
+            thisrow["Additive polynomial (MC 84th percentile)"] = np.nanquantile(a=np.array([pp.apoly for pp in pp_mc_list]), q=0.84, axis=0)
             thisrow["Additive polynomial (regularised)"] = pp_regul.apoly
     thisrow["Wavelength (rest frame, Å, log-rebinned)"] = pp_regul.lam
 
@@ -571,22 +540,24 @@ def add_stuff_to_df(pp_mc_list, pp_regul,
         thisrow["ppxf alpha_nu_vals"] = pp_regul.alpha_nu_vals
         thisrow["AGN template weights (MC mean)"] = np.nanmean([pp.weights_agn for pp in pp_mc_list], axis=0)
         thisrow["AGN template weights (MC error)"] = np.nanstd([pp.weights_agn for pp in pp_mc_list], axis=0)
-        thisrow["AGN template weights (MC 50th percentile)"] = np.quantile(a=[pp.weights_agn for pp in pp_mc_list], q=0.5, axis=0)
-        thisrow["AGN template weights (MC 16th percentile)"] = np.quantile(a=[pp.weights_agn for pp in pp_mc_list], q=0.16, axis=0)
-        thisrow["AGN template weights (MC 84th percentile)"] = np.quantile(a=[pp.weights_agn for pp in pp_mc_list], q=0.84, axis=0)
+        thisrow["AGN template weights (MC 50th percentile)"] = np.nanquantile(a=[pp.weights_agn for pp in pp_mc_list], q=0.5, axis=0)
+        thisrow["AGN template weights (MC 16th percentile)"] = np.nanquantile(a=[pp.weights_agn for pp in pp_mc_list], q=0.16, axis=0)
+        thisrow["AGN template weights (MC 84th percentile)"] = np.nanquantile(a=[pp.weights_agn for pp in pp_mc_list], q=0.84, axis=0)
         thisrow["AGN template weights (regularised)"] = pp_regul.weights_agn
         
         # Express as a fraction of the total stellar weights (accounts for extinction)
         thisrow["x_AGN (total, MC mean)"] = np.nanmean([np.nansum(pp.weights_agn) / np.nansum(pp.weights_stellar) for pp in pp_mc_list])
         thisrow["x_AGN (total, MC error)"] = np.nanstd([np.nansum(pp.weights_agn) / np.nansum(pp.weights_stellar) for pp in pp_mc_list])
-        thisrow["x_AGN (total, MC 50th percentile)"] = np.quantile(a=[np.nansum(pp.weights_agn) / np.nansum(pp.weights_stellar) for pp in pp_mc_list], q=0.50)
-        thisrow["x_AGN (total, MC 16th percentile)"] = np.quantile(a=[np.nansum(pp.weights_agn) / np.nansum(pp.weights_stellar) for pp in pp_mc_list], q=0.16)
-        thisrow["x_AGN (total, MC 84th percentile)"] = np.quantile(a=[np.nansum(pp.weights_agn) / np.nansum(pp.weights_stellar) for pp in pp_mc_list], q=0.84)
+        thisrow["x_AGN (total, MC 50th percentile)"] = np.nanquantile(a=[np.nansum(pp.weights_agn) / np.nansum(pp.weights_stellar) for pp in pp_mc_list], q=0.50)
+        thisrow["x_AGN (total, MC 16th percentile)"] = np.nanquantile(a=[np.nansum(pp.weights_agn) / np.nansum(pp.weights_stellar) for pp in pp_mc_list], q=0.16)
+        thisrow["x_AGN (total, MC 84th percentile)"] = np.nanquantile(a=[np.nansum(pp.weights_agn) / np.nansum(pp.weights_stellar) for pp in pp_mc_list], q=0.84)
         thisrow["x_AGN (total, regularised)"] = np.nansum(pp_regul.weights_agn) / np.nansum(pp_regul.weights_stellar)
         
         # Plot x_AGN A_V distribution overlaid w/ quantiles etc. to check that it looks right
         if plotit:
-            axs_hist.flat[ax_iter].hist(np.array([np.nansum(pp.weights_agn) / np.nansum(pp.weights_stellar) for pp in pp_mc_list]), bins=15)
+            x_AGN_vals = np.array([np.nansum(pp.weights_agn) / np.nansum(pp.weights_stellar) for pp in pp_mc_list])
+            if not all(np.isnan(x_AGN_vals)):
+                axs_hist.flat[ax_iter].hist(x_AGN_vals, bins=15)
             axs_hist.flat[ax_iter].axvline(thisrow["x_AGN (total, MC 16th percentile)"], ls="--", color="grey")
             axs_hist.flat[ax_iter].axvline(thisrow["x_AGN (total, MC 50th percentile)"], color="grey")
             axs_hist.flat[ax_iter].axvline(thisrow["x_AGN (total, MC 84th percentile)"], ls="--", color="grey")
@@ -600,13 +571,66 @@ def add_stuff_to_df(pp_mc_list, pp_regul,
         
         thisrow["x_AGN (individual, MC mean)"] = np.nanmean([pp.weights_agn / np.nansum(pp.weights_stellar) for pp in pp_mc_list], axis=0)
         thisrow["x_AGN (individual, MC error)"] = np.nanstd([pp.weights_agn / np.nansum(pp.weights_stellar) for pp in pp_mc_list], axis=0)
-        thisrow["x_AGN (individual, MC 50th percentile)"] = np.quantile(a=[pp.weights_agn / np.nansum(pp.weights_stellar) for pp in pp_mc_list], axis=0, q=0.50)
-        thisrow["x_AGN (individual, MC 16th percentile)"] = np.quantile(a=[pp.weights_agn / np.nansum(pp.weights_stellar) for pp in pp_mc_list], axis=0, q=0.16)
-        thisrow["x_AGN (individual, MC 84th percentile)"] = np.quantile(a=[pp.weights_agn / np.nansum(pp.weights_stellar) for pp in pp_mc_list], axis=0, q=0.84)
+        thisrow["x_AGN (individual, MC 50th percentile)"] = np.nanquantile(a=[pp.weights_agn / np.nansum(pp.weights_stellar) for pp in pp_mc_list], axis=0, q=0.50)
+        thisrow["x_AGN (individual, MC 16th percentile)"] = np.nanquantile(a=[pp.weights_agn / np.nansum(pp.weights_stellar) for pp in pp_mc_list], axis=0, q=0.16)
+        thisrow["x_AGN (individual, MC 84th percentile)"] = np.nanquantile(a=[pp.weights_agn / np.nansum(pp.weights_stellar) for pp in pp_mc_list], axis=0, q=0.84)
         thisrow["x_AGN (individual, regularised)"] = pp_regul.weights_agn / np.nansum(pp_regul.weights_stellar)
 
+    # Quality of fit 
+    thisrow["Reduced-chi2 (MC mean)"] = np.nanmean([pp.chi2 for pp in pp_mc_list])
+    thisrow["Reduced-chi2 (MC error)"] = np.nanstd([pp.chi2 for pp in pp_mc_list])
+    thisrow["Reduced-chi2 (MC 50th percentile)"] = np.nanquantile(a=[pp.chi2 for pp in pp_mc_list], q=0.5)
+    thisrow["Reduced-chi2 (MC 16th percentile)"] = np.nanquantile(a=[pp.chi2 for pp in pp_mc_list], q=0.16)
+    thisrow["Reduced-chi2 (MC 84th percentile)"] = np.nanquantile(a=[pp.chi2 for pp in pp_mc_list], q=0.84)
+    thisrow["Reduced-chi2 (regularised)"] = pp_regul.chi2
+    if plotit:
+        chi2_vals = np.array([pp.chi2 for pp in pp_mc_list])
+        if not all(np.isnan(chi2_vals)):
+            axs_hist.flat[ax_iter].hist(chi2_vals, bins=15)
+        axs_hist.flat[ax_iter].axvline(thisrow["Reduced-chi2 (MC 16th percentile)"], ls="--", color="grey")
+        axs_hist.flat[ax_iter].axvline(thisrow["Reduced-chi2 (MC 50th percentile)"], color="grey")
+        axs_hist.flat[ax_iter].axvline(thisrow["Reduced-chi2 (MC 84th percentile)"], ls="--", color="grey")
+        axs_hist.flat[ax_iter].axvline(thisrow["Reduced-chi2 (MC mean)"], color="k")
+        axs_hist.flat[ax_iter].axvline(thisrow["Reduced-chi2 (regularised)"], color="red")
+        axs_hist.flat[ax_iter].axvspan(xmin=thisrow["Reduced-chi2 (MC mean)"] - thisrow["Reduced-chi2 (MC error)"], xmax=thisrow["Reduced-chi2 (MC mean)"] + thisrow["Reduced-chi2 (MC error)"], color="pink", alpha=0.3)
+        axs_hist.flat[ax_iter].set_title(r"$\chi^2/{\rm DOF}$")
+        axs_hist.flat[ax_iter].set_xlabel(r"$\chi^2/{\rm DOF}$")
+        ax_iter += 1
+
     if plotit and savefig:
-        fig_hist.savefig(plot_fname, bbox_inches="tight", format="pdf")
+        fig_hist.savefig(os.path.join("/priv/meggs3/u5708159/S7/mar23/ppxf/figs/", plot_fname), bbox_inches="tight", format="pdf")
+
+    # Double-check that the quantile measurements are consistent with the means 
+    def check_for_nans(r, col):
+        if f"{col} (MC mean)" not in r:
+            print(f"NaN check: {col} not found!")
+            return
+        mean_is_nan = np.isnan(r[f"{col} (MC mean)"])
+        std_is_nan = np.isnan(r[f"{col} (MC error)"])
+        _50th_is_nan = np.isnan(r[f"{col} (MC 50th percentile)"])
+        _16th_is_nan = np.isnan(r[f"{col} (MC 16th percentile)"])
+        _84th_is_nan = np.isnan(r[f"{col} (MC 84th percentile)"])
+        if type(mean_is_nan) == np.bool_:
+            if not mean_is_nan == std_is_nan:
+                print(f"NaN consistency error found in column {col} for {gal}!")
+            if not mean_is_nan == _50th_is_nan:
+                print(f"NaN consistency error found in column {col} for {gal}!")
+            if not mean_is_nan == _16th_is_nan:
+                print(f"NaN consistency error found in column {col} for {gal}!")
+            if not mean_is_nan == _84th_is_nan:
+                print(f"NaN consistency error found in column {col} for {gal}!")
+        else:
+            if not all(mean_is_nan == std_is_nan):
+                print(f"NaN consistency error found in column {col} for {gal}!")
+            if not all(mean_is_nan == _50th_is_nan):
+                print(f"NaN consistency error found in column {col} for {gal}!")
+            if not all(mean_is_nan == _16th_is_nan):
+                print(f"NaN consistency error found in column {col} for {gal}!")
+            if not all(mean_is_nan == _84th_is_nan):
+                print(f"NaN consistency error found in column {col} for {gal}!")
+        print(f"NaN check: {col} is OK for {gal}")
+    for col in ["Stellar template weights", "v_*", "sigma_*", "v_*", "sigma_*", "v_*", "sigma_*", "F_gas erg/s", "v_gas", "sigma_gas", "SFH LW 1D", "SFH MW 1D", "Cumulative mass vs. age cutoff", "Cumulative light vs. age cutoff", "Cumulative light fraction vs. age cutoff", "Mass-weighted age vs. age cutoff", "Light-weighted age vs. age cutoff", "Mass-weighted age vs. age cutoff", "Light-weighted age vs. age cutoff", "A_V", "10^-0.4A(lambda)", "A_V", "Multiplicative polynomial", "Additive polynomial", "AGN template weights",]:
+        check_for_nans(thisrow, col)
 
     return thisrow
 
@@ -730,8 +754,6 @@ def run_ppxf(spec, spec_err, lambda_vals_A, z,
     # Estimate the errors
     spec_err_log = log_rebin_errors(spec_linear, spec_err_linear, lambda_start_A, lambda_end_A)
 
-    # Mask out regions where the noise vector is zero or inifinite, and where 
-    # the spectrum is negative
     bad_px_mask = np.logical_or(spec_err_log <=0, np.isinf(spec_err_log))
     bad_px_mask = np.logical_or(bad_px_mask, spec_log < 0)
     bad_px_mask = np.logical_or(bad_px_mask, np.isnan(spec_err_log))
