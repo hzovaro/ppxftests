@@ -12,7 +12,7 @@
 ###############################################################################
 import matplotlib.pyplot as plt
 import numpy as np
-from IPython.core.debugger import Tracer
+# from IPython.core.debugger import Tracer
 
 from ppxftests.ssputils import load_ssp_templates
 from ppxftests.sfhutils import compute_mw_age, compute_lw_age, compute_cumulative_mass, compute_cumulative_light, compute_mean_1D_sfh

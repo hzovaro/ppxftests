@@ -12,7 +12,7 @@ plt.ion()
 plt.close("all")
 fig_path = "/priv/meggs3/u5708159/ppxftests/figs/"
 
-from IPython.core.debugger import Tracer
+# from IPython.core.debugger import Tracer
 
 """
     Accurately recovering the smoothness of the SFH: try SFHs with varying 

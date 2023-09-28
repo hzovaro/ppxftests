@@ -469,7 +469,9 @@ def add_stuff_to_df(pp_mc_list,
         axs_hist.flat[ax_iter].axvspan(xmin=thisrow["Reduced-chi2 (MC mean)"] - thisrow["Reduced-chi2 (MC error)"], xmax=thisrow["Reduced-chi2 (MC mean)"] + thisrow["Reduced-chi2 (MC error)"], color="pink", alpha=0.3)
         axs_hist.flat[ax_iter].set_title(r"$\chi^2/{\rm DOF}$")
         axs_hist.flat[ax_iter].set_xlabel(r"$\chi^2/{\rm DOF}$")
-        ax_iter += 1
+
+        # Hide the remaining axis
+        axs_hist.flat[-1].set_visible(False)
 
     if plotit and savefig:
         fig_hist.savefig(os.path.join(fig_path, plot_fname), bbox_inches="tight", format="pdf")

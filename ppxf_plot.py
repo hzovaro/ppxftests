@@ -12,7 +12,7 @@
 ###############################################################################
 import matplotlib.pyplot as plt
 import numpy as np
-from IPython.core.debugger import Tracer
+# from IPython.core.debugger import Tracer
 
 from ppxftests.ssputils import load_ssp_templates
 

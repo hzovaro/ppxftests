@@ -12,7 +12,7 @@ from matplotlib.lines import Line2D
 plt.ion()
 plt.close("all")
 
-from IPython.core.debugger import Tracer
+# from IPython.core.debugger import Tracer
 
 _, _, metallicities_padova, ages_padova = load_ssp_templates("Padova")
 _, _, metallicities_geneva, ages_geneva = load_ssp_templates("Geneva")
