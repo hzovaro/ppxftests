@@ -115,6 +115,36 @@ def sci_notation(num, err):
         s = "$ {:." + str(ndigits) + "f} \\pm {:." + str(ndigits) + "f}$"
         return s.format(mantissa_dp, mantissa_err_dp)
 
+##############################################################################
+# For running in parallel
+##############################################################################
+def ppxf_helper(args):
+    # Parse arguments
+    templates, spec_log, spec_err_log, noise_scaling_factor,\
+        velscale, start_kin, good_px, nmoments, adegree,\
+        mdegree, dv, lambda_vals_log, regul, clean, reddening, reddening_calzetti00,\
+        reg_dim, kinematic_components, gas_component, gas_names,\
+        gas_reddening = args
+
+    # Run ppxf
+    pp_age_met = ppxf(templates=templates,
+          galaxy=spec_log, noise=spec_err_log * noise_scaling_factor,
+          velscale=np.squeeze(velscale), start=start_kin,
+          goodpixels=good_px,
+          moments=nmoments, degree=adegree, mdegree=mdegree,
+          vsyst=dv,
+          lam=np.exp(lambda_vals_log),
+          regul=regul,
+          clean=clean,
+          reddening=reddening, reddening_func=reddening_calzetti00,
+          reg_dim=reg_dim,
+          component=kinematic_components, gas_component=gas_component,
+          gas_names=gas_names, gas_reddening=gas_reddening, method="capfit",
+          quiet=True)
+
+    # Return
+    return pp_age_met
+
 ###########################################################################
 # Function for saving variables to a DataFrame from multiple ppxf runs
 ###########################################################################
