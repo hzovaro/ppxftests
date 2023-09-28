@@ -168,7 +168,7 @@ def ppxf_plot(pp, ax=None):
         ax.set_xlabel("Pixels")
         x = np.arange(pp.galaxy.size)
     else:
-        ax.set_xlabel("Observer-frame wavelength (Å)")
+        ax.set_xlabel("Rest-frame wavelength (Å)")
         x = pp.lam
 
     resid = pp.galaxy - pp.bestfit
