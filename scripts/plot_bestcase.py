@@ -17,7 +17,7 @@ rcParams["font.size"] = 14
 plt.ion()
 plt.close("all")
 
-from IPython.core.debugger import Tracer
+# from IPython.core.debugger import Tracer
 
 data_path = "/priv/meggs3/u5708159/ppxftests/best_case/"
 fig_path = "/priv/meggs3/u5708159/ppxftests/figs/best_case/"

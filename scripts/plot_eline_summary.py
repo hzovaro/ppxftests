@@ -15,7 +15,7 @@ from matplotlib.backends.backend_pdf import PdfPages
 plt.ion()
 plt.close("all")
 
-from IPython.core.debugger import Tracer
+# from IPython.core.debugger import Tracer
 
 """
 Want to investigate how the measured quantities (ages, etc.) vary as a function
@@ -212,7 +212,7 @@ for rr in df.index.values:
         pp_meas.savefig(fig, bbox_inches="tight")
 
     if not savefigs:
-        Tracer()()
+        # Tracer()()
     plt.close("all")
 
 # Finish writing to file

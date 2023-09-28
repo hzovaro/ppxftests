@@ -10,7 +10,7 @@ from matplotlib.backends.backend_pdf import PdfPages
 plt.ion()
 plt.close("all")
 
-from IPython.core.debugger import Tracer
+# from IPython.core.debugger import Tracer
 
 """
 For each galaxy we saved a DataFrame for in test_agn_continuum.py, plot
@@ -39,15 +39,15 @@ isochrones = "Padova"
 # Load the DataFrame
 ###############################################################################
 gal = int(sys.argv[1])
-df = pd.read_hdf(os.path.join(data_path, f"ga{gal}_agncont_agncontfit={'true' if fit_agn_cont else 'false'}.hd5"), key="agn")
+df = pd.read_hdf(os.path.join(data_path, f"ga{gal:004}_agncont_agncontfit={'true' if fit_agn_cont else 'false'}.hd5"), key="agn")
 
 x_AGN_vals = df["x_AGN"].unique()
 alpha_nu_vals = df["alpha_nu"].unique()
 
 # Multi-page pdfs
 if savefigs:
-    pp_sfh = PdfPages(os.path.join(fig_path, f"ga{gal}_agncont_agncontfit={'true' if fit_agn_cont else 'false'}_sfhs.pdf"))
-    pp_meas = PdfPages(os.path.join(fig_path, f"ga{gal}_agncont_agncontfit={'true' if fit_agn_cont else 'false'}_meas.pdf"))
+    pp_sfh = PdfPages(os.path.join(fig_path, f"ga{gal:004}_agncont_agncontfit={'true' if fit_agn_cont else 'false'}_sfhs.pdf"))
+    pp_meas = PdfPages(os.path.join(fig_path, f"ga{gal:004}_agncont_agncontfit={'true' if fit_agn_cont else 'false'}_meas.pdf"))
 
 ###############################################################################
 # Summary plot
@@ -197,7 +197,7 @@ for alpha_nu, x_AGN in product(alpha_nu_vals, x_AGN_vals):
         pp_meas.savefig(fig, bbox_inches="tight")
 
     if not savefigs:
-        Tracer()()
+        # Tracer()()
     plt.close("all")
 
 

@@ -10,7 +10,7 @@ from matplotlib.backends.backend_pdf import PdfPages
 plt.ion()
 plt.close("all")
 
-from IPython.core.debugger import Tracer
+# from IPython.core.debugger import Tracer
 
 """
 For each galaxy we saved a DataFrame for in test_agn_continuum.py, plot
@@ -217,7 +217,7 @@ for alpha_nu, x_AGN, A_V in product(alpha_nu_vals, x_AGN_vals, A_V_vals):
         pp_meas.savefig(fig, bbox_inches="tight")
 
     if not savefigs:
-        Tracer()()
+        # Tracer()()
     plt.close("all")
 
 # Finish writing to file

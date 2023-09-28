@@ -12,7 +12,7 @@ rcParams["font.size"] = 14
 plt.ion()
 # plt.close("all")
 
-from IPython.core.debugger import Tracer
+# from IPython.core.debugger import Tracer
 
 """
 How well do we recover the AGN continuum/A_V parameters when an AGN 

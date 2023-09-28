@@ -19,7 +19,7 @@ import matplotlib.pyplot as plt
 plt.ion()
 plt.close("all")
 
-from IPython.core.debugger import Tracer
+# from IPython.core.debugger import Tracer
 
 isochrones = "Padova"
 gal = 10

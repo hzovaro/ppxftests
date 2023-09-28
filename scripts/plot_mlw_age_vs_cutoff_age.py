@@ -10,7 +10,7 @@ from matplotlib.backends.backend_pdf import PdfPages
 plt.ion()
 plt.close("all")
 
-from IPython.core.debugger import Tracer
+# from IPython.core.debugger import Tracer
 
 """
 For each galaxy we saved a DataFrame for in test_agn_continuum.py, plot

@@ -15,7 +15,7 @@ from matplotlib.backends.backend_pdf import PdfPages
 plt.ion()
 plt.close("all")
 
-from IPython.core.debugger import Tracer
+# from IPython.core.debugger import Tracer
 
 """
 Want to investigate how the measured quantities (ages, etc.) vary as a function

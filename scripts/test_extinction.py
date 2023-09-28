@@ -17,9 +17,9 @@ from ppxftests.sfhutils import compute_mean_age, compute_mean_mass, compute_mean
 from ppxftests.ppxf_plot import plot_sfh_mass_weighted, plot_sfh_light_weighted
 
 import matplotlib
-matplotlib.use("agg")
+# matplotlib.use("agg")
 
-from IPython.core.debugger import Tracer
+# from IPython.core.debugger import Tracer
 
 data_path = "/priv/meggs3/u5708159/ppxftests/ext_and_agn/"
 
