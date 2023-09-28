@@ -2,6 +2,8 @@ import os
 import numpy as np
 import pandas as pd
 
+from settings import ppxf_output_path, fig_path, Aperture
+
 import matplotlib.pyplot as plt
 from matplotlib.patches import Patch
 from matplotlib.lines import Line2D
@@ -10,17 +12,15 @@ plt.close("all")
 
 """
 For each galaxy in our sample, plot the LW or MW ages, plus the best-fit x_AGN and A_V.
+In the same figure, plot (a) ages, (b) A_V and (c) x_AGN. 
+Only show x-axis labels on the top/bottom w/ rotation.
 """
-
-s7_data_path = "/priv/meggs3/u5708159/S7/mar23/ppxf"
-fig_path = "/priv/meggs3/u5708159/S7/mar23/ppxf/figs/paper/"
 
 ###############################################################################
 # Settings
 ###############################################################################
 savefigs = True
 age_cutoff_strs = ["1e8", "1e9"]
-weighttypes = ["LW", "MW"]
 
 marker_dict = {
     "1e8": "d", 
@@ -32,11 +32,6 @@ colour_dict = {
     "RE1" : "green",
 }
 
-"""
-In the same figure, plot (a) ages, (b) A_V and (c) x_AGN. 
-Only show x-axis labels on the top/bottom w/ rotation.
-"""
-
 ###############################################################################
 # Create the figure in which to plot ALL aperture measurements together
 ###############################################################################
@@ -47,14 +42,14 @@ ax_AGN, ax_AV, ax_ages = axs
 fig.subplots_adjust(hspace=0)
 
 dx = -0.5
-for ap in ["FOURAS", "ONEKPC", "RE1"]:
+for ap in [Aperture.FOURAS, Aperture.ONEKPC, Aperture.RE1]:
     dx += 0.25
 
     ###############################################################################
     # Load the DataFrame
     ###############################################################################
     # Load the DataFrame containing ages 
-    df = pd.read_hdf(os.path.join(s7_data_path, f"s7_ppxf_{ap}.hd5"), key="S7")
+    df = pd.read_hdf(os.path.join(ppxf_output_path, f"s7_ppxf_{ap.name}.hd5"), key="S7")
     gals = df.index.values
 
     ###############################################################################
@@ -75,7 +70,7 @@ for ap in ["FOURAS", "ONEKPC", "RE1"]:
                         df.loc[cond_good_MC, f"{weighttype} age (<{age/1e6:.2f} Myr) (MC 50th percentile)"] - df.loc[cond_good_MC, f"{weighttype} age (<{age/1e6:.2f} Myr) (MC 16th percentile)"],
                         df.loc[cond_good_MC, f"{weighttype} age (<{age/1e6:.2f} Myr) (MC 84th percentile)"] - df.loc[cond_good_MC, f"{weighttype} age (<{age/1e6:.2f} Myr) (MC 50th percentile)"],
                     ],
-                    marker=marker_dict[age_str], mfc=colour_dict[ap], mec=colour_dict[ap], ecolor=colour_dict[ap], alpha=0.5, linewidth=0.5, linestyle="none", markersize=5,
+                    marker=marker_dict[age_str], mfc=colour_dict[ap.name], mec=colour_dict[ap.name], ecolor=colour_dict[ap.name], alpha=0.5, linewidth=0.5, linestyle="none", markersize=5,
                     label=r"MC simulations ($\tau_{\rm cutoff} = %s$)" % age_cutoff_strs)
         # Unreliable
         ax_ages.errorbar(x=df.loc[~cond_good_MC, "Number"].values + dx, 
@@ -96,7 +91,7 @@ for ap in ["FOURAS", "ONEKPC", "RE1"]:
                             df[f"x_AGN (total, MC 50th percentile)"] - df[f"x_AGN (total, MC 16th percentile)"],
                             df[f"x_AGN (total, MC 84th percentile)"] - df[f"x_AGN (total, MC 50th percentile)"],
                         ],
-                marker="s", mfc=colour_dict[ap], mec=colour_dict[ap], ecolor=colour_dict[ap], alpha=0.5, linewidth=1.2, linestyle="none", markersize=4,)
+                marker="s", mfc=colour_dict[ap.name], mec=colour_dict[ap.name], ecolor=colour_dict[ap.name], alpha=0.5, linewidth=1.2, linestyle="none", markersize=4,)
 
     ###############################################################################
     # Plot A_V
@@ -107,7 +102,7 @@ for ap in ["FOURAS", "ONEKPC", "RE1"]:
                             df[f"A_V (MC 50th percentile)"] - df[f"A_V (MC 16th percentile)"],
                             df[f"A_V (MC 84th percentile)"] - df[f"A_V (MC 50th percentile)"],
                         ],
-                marker="s", mfc=colour_dict[ap], mec=colour_dict[ap], ecolor=colour_dict[ap], alpha=0.5, linewidth=1.2, linestyle="none", markersize=4,)
+                marker="s", mfc=colour_dict[ap.name], mec=colour_dict[ap.name], ecolor=colour_dict[ap.name], alpha=0.5, linewidth=1.2, linestyle="none", markersize=4,)
 
 # Decorations
 ax_ages.set_xticklabels(gals, rotation="vertical", ha="center", va="top", fontsize="small")
