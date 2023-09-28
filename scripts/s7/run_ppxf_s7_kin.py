@@ -7,16 +7,14 @@ import multiprocessing
 import numpy as np
 from numpy.random import RandomState
 import pandas as pd
-from astropy.io import fits
 from scipy.interpolate import interp1d
 from tqdm import tqdm
 from time import time
 
-from linelist import linelist as eline_lambdas_A
-
 from ppxftests.run_ppxf import run_ppxf
 
-from settings import CLEAN, lzifu_input_path, lzifu_output_path, ppxf_output_path, fig_path, Aperture, gals_all
+from settings import CLEAN, ppxf_output_path, fig_path, Aperture, get_aperture_coords, gals_all
+from load_galaxy_spectrum import load_galaxy_spectrum
 
 savefigs = True
 
@@ -238,7 +236,7 @@ if __name__ == "__main__":
 
     # x and y coordinates in DataCube corresponding to the chosen aperture
     aperture = Aperture[args[1]]
-    rr, cc = np.unravel_index(aperture.value, (2, 2))
+    rr, cc = get_aperture_coords(aperture)
 
     # List of Galaxies
     if len(args) > 2:
@@ -259,55 +257,11 @@ if __name__ == "__main__":
         else:
             print(f"Now running on {gal} (aperture {aperture}) in DEBUG mode...")
         print("###################################################################")
+        
         ##############################################################################
         # Load the aperture spectrum
-        ##############################################################################
-        hdulist_in = fits.open(os.path.join(lzifu_input_path, f"{gal}.fits.gz"))
-        
-        spec = hdulist_in["PRIMARY"].data[:, rr, cc]
-        spec_err = np.sqrt(hdulist_in["VARIANCE"].data[:, rr, cc])
-        norm = hdulist_in["NORM"].data[rr, cc]
-        z = hdulist_in[0].header["Z"]
-
-        N_lambda = hdulist_in[0].header["NAXIS3"]
-        dlambda_A = hdulist_in[0].header["CDELT3"]
-        lambda_0_A = hdulist_in[0].header["CRVAL3"]
-        lambda_vals_obs_A = np.array(list(range(N_lambda))) * dlambda_A + lambda_0_A
-        lambda_vals_rest_A = lambda_vals_obs_A / (1 + z)
-
-        # Define bad pixel ranges
-        bad_pixel_ranges_A = [
-            [(6300 - 10) / (1 + z), (6300 + 10) / (1 + z)], # Sky line at 6300
-            [(5577 - 10) / (1 + z), (5577 + 10) / (1 + z)], # Sky line at 5577
-            [(6360 - 10) / (1 + z), (6360 + 10) / (1 + z)], # Sky line at 6360
-            [(5700 - 10) / (1 + z), (5700 + 10) / (1 + z)], # Sky line at 5700                              
-            [(5889 - 30), (5889 + 20)], # Interstellar Na D + He line 
-            [(5889 - 10) / (1 + z), (5889 + 10) / (1 + z)], # solar NaD line
-        ]
-        for line in ["OII3726,9", "Hdelta", "Hgamma", "OIII4959", "OIII5007", "OI6300", "Halpha", "NII6548", "NII6583", "SII6716", "SII6731"]:
-            bad_pixel_ranges_A += [[(eline_lambdas_A[line] - 25), (eline_lambdas_A[line] + 25)]]
-
-        ##############################################################################
-        # Load the LZIFU fit
-        ##############################################################################
-        lzifu_fname = f"{gal}_merge_comp.fits"
-        hdulist = fits.open(os.path.join(lzifu_output_path, lzifu_fname))
-        spec_cont_lzifu = hdulist["CONTINUUM"].data[:, rr, cc] 
-        spec_elines = hdulist["LINE"].data[:, rr, cc]
-
-        spec_cont_only = spec - spec_elines
-
-        # Plot to check
-        if debug:
-            fig, ax = plt.subplots(figsize=(10, 5))
-            ax.errorbar(x=lambda_vals_obs_A, y=spec, yerr=spec_err, color="k", label="Data")
-            ax.plot(lambda_vals_obs_A, spec_cont_lzifu, color="green", label="Continuum fit")
-            ax.plot(lambda_vals_obs_A, spec_elines, color="magenta", label="Emission line fit")
-            ax.plot(lambda_vals_obs_A, spec_cont_lzifu + spec_elines, color="orange", label="Total fit")
-            ax.plot(lambda_vals_obs_A, spec_cont_only, color="red", label="Data minus emission lines")
-            ax.set_xlabel("Wavelength (Å)")
-            ax.set_ylabel(r"Normalised flux ($F_\lambda$)")
-            ax.legend()
+        lambda_vals_obs_A, lambda_vals_rest_A, spec, spec_cont_only, spec_err, norm, bad_pixel_ranges_A =\
+            load_galaxy_spectrum(gal, aperture)
 
         ##############################################################################
         # PPXF: kinematic fit
@@ -432,4 +386,4 @@ if __name__ == "__main__":
         df = df.append(thisrow, ignore_index=True)
 
         # Save to file
-        df.to_hdf(os.path.join(ppxf_output_path, "ppxf", df_fname), key=aperture.name)
+        df.to_hdf(os.path.join(ppxf_output_path, df_fname), key=aperture.name)
