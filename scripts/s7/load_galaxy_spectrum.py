@@ -5,7 +5,7 @@ from astropy.io import fits
 
 import matplotlib.pyplot as plt
  
-from settings import lzifu_input_path, lzifu_output_path, gals_all, get_aperture_coords
+from settings import lzifu_input_path, lzifu_output_path, gals_all, get_aperture_coords, extra_bad_pixel_ranges_dict
 
 def load_galaxy_spectrum(gal, aperture, plotit=False):
     """
@@ -37,6 +37,8 @@ def load_galaxy_spectrum(gal, aperture, plotit=False):
          [(5889 - 30), (5889 + 20)], # Interstellar Na D + He line 
          [(5889 - 10) / (1 + z), (5889 + 10) / (1 + z)], # solar NaD line
     ]
+    if gal in extra_bad_pixel_ranges_dict:
+        bad_pixel_ranges_A += extra_bad_pixel_ranges_dict[gal]
 
     # Load the LZIFU fit
     lzifu_fname = f"{gal}_merge_comp.fits"
