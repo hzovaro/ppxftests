@@ -87,7 +87,7 @@ for gal in gals:
     else:
         print(f"Now running on {gal} (aperture {aperture}) in DEBUG mode...")
 
-    ##############################################################################
+    #############################################################################
     # Load the aperture spectrum
     lambda_vals_obs_A, lambda_vals_rest_A, spec, spec_cont_only, spec_err, norm, bad_pixel_ranges_A =\
         load_galaxy_spectrum(gal, aperture)
@@ -118,5 +118,5 @@ for gal in gals:
     df = df.append(thisrow, ignore_index=True)
 
     # Save 
-    df.to_hdf(os.path.join(ppxf_output_path, "ppxf", df_fname), key=aperture.name)
+    df.to_hdf(os.path.join(ppxf_output_path, df_fname), key=aperture.name)
     print(f"Finished processing {gal}!")
