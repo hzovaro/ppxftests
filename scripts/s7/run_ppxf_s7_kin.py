@@ -13,14 +13,14 @@ from time import time
 
 from ppxftests.run_ppxf import run_ppxf
 
-from settings import CLEAN, ppxf_output_path, fig_path, Aperture, get_aperture_coords, gals_all
+from settings import CLEAN, isochrones, ppxf_output_path, fig_path, Aperture, get_aperture_coords, gals_all
 from load_galaxy_spectrum import load_galaxy_spectrum
 
 savefigs = True
 
 # Keyword args for ppxf - should be consistent between runs
 kwargs = {
-        "isochrones": "Padova", 
+        "isochrones": isochrones,
         "z": 0.0, 
         "fit_gas": False, 
         "ngascomponents": 0,
@@ -268,7 +268,6 @@ if __name__ == "__main__":
         ##############################################################################
         t = time()
         print(f"Gal {gal}: running ppxf...")
-        #TODO use the CLEAN keyword
         """
         Noise scaling:
         - run once with flat noise values (= average of noise across full spectrum)
@@ -283,7 +282,7 @@ if __name__ == "__main__":
                     lambda_vals_A=lambda_vals_rest_A,
                     bad_pixel_ranges_A=bad_pixel_ranges_A,
                     plotit=True if debug else False,
-                    clean=False,
+                    clean=CLEAN,
                     **kwargs)
         if debug:
             plt.gcf().get_axes()[0].set_title(f"Initial fit for {gal}: v_* = {pp1.sol[0]:.2f} km/s; sigma_* = {pp1.sol[1]:.2f} km/s")
