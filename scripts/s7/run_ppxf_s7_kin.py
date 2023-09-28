@@ -1,5 +1,7 @@
+import matplotlib
+matplotlib.use("agg")
+
 import sys, os 
-import matplotlib; # matplotlib.use("agg")
 import matplotlib.pyplot as plt
 import multiprocessing
 import numpy as np
@@ -12,24 +14,11 @@ from time import time
 
 from linelist import linelist as eline_lambdas_A
 
-from ppxftests.run_ppxf import run_ppxf, add_stuff_to_df
+from ppxftests.run_ppxf import run_ppxf
 
-from IPython.core.debugger import Tracer 
+from settings import CLEAN, lzifu_input_path, lzifu_output_path, ppxf_output_path, fig_path, Aperture, gals_all
 
-# Paths
-lzifu_input_path = "/priv/meggs3/u5708159/S7/mar23/LZIFU/data/"
-lzifu_output_path = "/priv/meggs3/u5708159/S7/mar23/LZIFU/products/"
-s7_data_path = "/priv/meggs3/u5708159/S7/mar23/"
-fig_path = "/priv/meggs3/u5708159/S7/mar23/ppxf/figs"
 savefigs = True
-
-# Aperture type
-from enum import Enum
-class Aperture(Enum):
-    RE1 = 0
-    FOURAS = 1
-    SDSS = 2
-    ONEKPC = 3
 
 # Keyword args for ppxf - should be consistent between runs
 kwargs = {
@@ -84,7 +73,7 @@ def ppxf_mc_helper(args):
     
     # Run ppxf
     pp = run_ppxf(spec=spec_noise, spec_err=spec_err, lambda_vals_A=lambda_vals_A,
-                  bad_pixel_ranges_A=bad_pixel_ranges_A, clean=True,
+                  bad_pixel_ranges_A=bad_pixel_ranges_A, clean=CLEAN,
                   **kwargs)
     return pp
 
@@ -173,7 +162,7 @@ def ppxf_mc_helper_VdS(args):
     
     # Run ppxf on the best fit + the shuffled residuals
     pp = run_ppxf(spec=spec_noise, spec_err=spec_err, lambda_vals_A=lambda_vals_A,
-                  bad_pixel_ranges_A=bad_pixel_ranges_A, clean=True,
+                  bad_pixel_ranges_A=bad_pixel_ranges_A, clean=CLEAN,
                   **kwargs)
     return pp
 
@@ -201,7 +190,7 @@ def ppxf_mc_VdS(ppxf_fn, spec, spec_err, lambda_vals_A, bad_pixel_ranges_A, nite
     """
     # Run ppxf once to get a fit 
     pp = run_ppxf(spec=spec, spec_err=spec_err, lambda_vals_A=lambda_vals_A,
-                  bad_pixel_ranges_A=bad_pixel_ranges_A, clean=True,
+                  bad_pixel_ranges_A=bad_pixel_ranges_A, clean=CLEAN,
                   **kwargs)
 
     # Interpolate fit back to linear wavelength grid so we can subtract it from the input to get the residuals
@@ -227,7 +216,6 @@ def ppxf_mc_VdS(ppxf_fn, spec, spec_err, lambda_vals_A, bad_pixel_ranges_A, nite
 
     return pp_list
 
-#%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 if __name__ == "__main__":
 
     ###########################################################################
@@ -256,7 +244,7 @@ if __name__ == "__main__":
     if len(args) > 2:
         gals = args[2:]
     else:
-        gals = [g.strip("\n") for g in open(os.path.join(s7_data_path, "gal_list.txt")).readlines()]
+        gals = gals_all
 
     ##############################################################################
     # Run ppxf for each galaxy & append to DataFrame
@@ -365,7 +353,7 @@ if __name__ == "__main__":
                         lambda_vals_A=lambda_vals_rest_A,
                         bad_pixel_ranges_A=bad_pixel_ranges_A,
                         plotit=True if debug else False,
-                        clean=True,
+                        clean=CLEAN,
                         **kwargs)
         if debug:
             plt.gcf().get_axes()[0].set_title(f"Second fit for {gal}: v_* = {pp_kin.sol[0]:.2f} km/s; sigma_* = {pp_kin.sol[1]:.2f} km/s (noise scaled by {resid_std / noise_mean:.4f})")
@@ -444,4 +432,4 @@ if __name__ == "__main__":
         df = df.append(thisrow, ignore_index=True)
 
         # Save to file
-        df.to_hdf(os.path.join(s7_data_path, "ppxf", df_fname), key=aperture.name)
+        df.to_hdf(os.path.join(ppxf_output_path, "ppxf", df_fname), key=aperture.name)

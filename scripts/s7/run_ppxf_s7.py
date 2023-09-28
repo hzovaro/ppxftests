@@ -1,9 +1,8 @@
-import sys, os 
-
-# Use silent backend for running on avatar
 import matplotlib
-matplotlib.use("agg")
+matplotlib.use("agg")  # Use silent backend for running on avatar
 
+import sys, os
+import multiprocessing
 import numpy as np
 from numpy.random import RandomState
 import pandas as pd
@@ -11,8 +10,7 @@ from astropy.io import fits
 from tqdm import tqdm
 from time import time
 
-import multiprocessing
-
+from settings import CLEAN, lzifu_input_path, lzifu_output_path, ppxf_output_path, fig_path, Aperture, gals_all
 from ppxftests.run_ppxf import run_ppxf, add_stuff_to_df
 
 import matplotlib.pyplot as plt
@@ -20,19 +18,6 @@ plt.ion()
 plt.close("all")
 
 from IPython.core.debugger import Tracer 
-
-# Paths
-lzifu_input_path = "/priv/meggs3/u5708159/S7/mar23/LZIFU/data/"
-lzifu_output_path = "/priv/meggs3/u5708159/S7/mar23/LZIFU/products/"
-s7_data_path = "/priv/meggs3/u5708159/S7/mar23/"
-
-# Aperture type
-from enum import Enum
-class Aperture(Enum):
-    RE1 = 0
-    FOURAS = 1
-    SDSS = 2
-    ONEKPC = 3
 
 ###########################################################################
 # User options
@@ -54,7 +39,7 @@ rr, cc = np.unravel_index(aperture.value, (2, 2))
 if len(args) > 2:
     gals = args[2:]
 else:
-    gals = [g.strip("\n") for g in open(os.path.join(s7_data_path, "gal_list.txt")).readlines()]
+    gals = gals_all
 
 ###########################################################################
 # Helper function for running MC simulations
@@ -85,7 +70,7 @@ def ppxf_helper(args):
                   z=0.0, ngascomponents=1,
                   fit_gas=False, tie_balmer=False,
                   fit_agn_cont=True,
-                  clean=True,
+                  clean=CLEAN,
                   reddening=1.0, mdegree=-1,
                   regularisation_method="none")
     return pp
@@ -97,12 +82,10 @@ for gal in gals:
     # Create a new DataFrame for this galaxy
     df_fname = f"s7_ppxf_DEBUG_{gal}_{aperture.name}.hd5" if debug else f"s7_ppxf_{gal}_{aperture.name}.hd5"
     df = pd.DataFrame(dtype="object")
-    print("###################################################################")
     if not debug:
         print(f"Now running on {gal} (aperture {aperture})...")
     else:
         print(f"Now running on {gal} (aperture {aperture}) in DEBUG mode...")
-    print("###################################################################")
     ##############################################################################
     # Load the aperture spectrum
     ##############################################################################
@@ -152,27 +135,8 @@ for gal in gals:
         ax.legend()
 
     ##############################################################################
-    # PPXF: regularised
-    ##############################################################################
-    if not debug:
-        t = time()
-        print(f"Gal {gal}: Regularisation: running ppxf on {nthreads} threads...")
-        pp_regul = run_ppxf(spec=spec_cont_only * norm, spec_err=spec_err * norm, lambda_vals_A=lambda_vals_rest_A,
-                            isochrones="Padova", z=0.0, 
-                            fit_gas=False, ngascomponents=0,
-                            fit_agn_cont=True,
-                            reddening=1.0, mdegree=-1,
-                            bad_pixel_ranges_A=bad_pixel_ranges_A,
-                            regularisation_method="auto",
-                            clean=True,
-                            regul_nthreads=nthreads, interactive_mode=False,
-                            plotit=True if debug else False)
-        print(f"Gal {gal}: Regularisation: total time in run_ppxf: {time() - t:.2f} seconds")
-
-    ##############################################################################
     # PPXF: MC simulations
     ##############################################################################
-    print("###################################################################")
     # Input arguments
     seeds = list(np.random.randint(low=0, high=100 * niters, size=niters))
     args_list = [[s, spec_cont_only * norm, spec_err * norm, lambda_vals_rest_A, bad_pixel_ranges_A] for s in seeds]
@@ -184,27 +148,21 @@ for gal in gals:
         pp_mc_list = list(tqdm(pool.imap(ppxf_helper, args_list), total=niters))
     print(f"Gal {gal}: MC simulations: total time in ppxf: {time() - t:.2f} s")
 
-    # SNEAKY: to save time in DEBUG mode, replace pp_regul with one of the MC instances
-    if debug:
-        pp_regul = pp_mc_list[0]
-
     ##############################################################################
     # Extract information for DataFrame
     ##############################################################################
     try:
         if debug:
-            thisrow = add_stuff_to_df(pp_mc_list, pp_regul, plotit=True, plot_fname=f"MC_iter_{gal}_{aperture.name}_debug.pdf", savefig=True, gal=gal)
+            thisrow = add_stuff_to_df(pp_mc_list, plotit=True, fig_path=fig_path, plot_fname=f"MC_iter_{gal}_{aperture.name}_debug.pdf", savefig=True, gal=gal)
         else:
-            thisrow = add_stuff_to_df(pp_mc_list, pp_regul, plotit=True, plot_fname=f"MC_iter_{gal}_{aperture.name}.pdf", savefig=True, gal=gal)
+            thisrow = add_stuff_to_df(pp_mc_list, plotit=True, fig_path=fig_path, plot_fname=f"MC_iter_{gal}_{aperture.name}.pdf", savefig=True, gal=gal)
     except:
         print(f"WARNING: plotting failed for {gal}!")
-        thisrow = add_stuff_to_df(pp_mc_list, pp_regul)
+        thisrow = add_stuff_to_df(pp_mc_list)
     thisrow["Galaxy"] = gal
 
     df = df.append(thisrow, ignore_index=True)
 
     # Save 
-    df.to_hdf(os.path.join(s7_data_path, "ppxf", df_fname), key=aperture.name)
-    print("###################################################################")
+    df.to_hdf(os.path.join(ppxf_output_path, "ppxf", df_fname), key=aperture.name)
     print(f"Finished processing {gal}!")
-    print("###################################################################")
