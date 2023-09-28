@@ -77,7 +77,7 @@ for gal in tqdm(gals):
     # Plot the actual fit.
     fig, ax = plt.subplots(nrows=1, figsize=(10, 3.375))
     ppxf_plot(pp, ax=ax)
-    ax.set_title(gal)
+    ax.set_title(gal + r" (Reduced-$\chi^2 = %.2f$)" % pp.chi2)
     # For now, saving to the regular directory, not the paper one
     if savefigs:
         plt.gcf().savefig(os.path.join(fig_path, f"{gal}_{aperture.name}.pdf"), format="pdf", bbox_inches="tight")
