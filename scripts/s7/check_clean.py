@@ -15,9 +15,55 @@ TODO:
     3b. change directory structure to preserve fits and figures with clean turned on.
         Try plotting figures w/ clean turned on to check paths, etc. work.
     3c. re-run on avatar.
-            First just run the RE1 ones to see how long they take (& if any bugs arise).
-            Then queue the others.
+        First just run the RE1 ones to see how long they take (& if any bugs arise).
+        Then queue the others.
+5. Once fits are finalised, look at the ppxf fits & make a list of galaxies with poor fits:
+    
+    (These are for the RE1 aperture)
+    ESO362-G18 - 29.51 (tentative - residuals) - unimodal chi2 dist.
+    FAIRALL49 - 12.49 (really bad - residuals) - unimodal chi2 dist.
+    IC4329A - 112.97 (really bad - residuals) - unimodal chi2 dist.
+    MCG-03-34-064 (really bad - residuals) - bimodal chi2 dist.
+    NGC424 - 19.32 (tentative - residuals) - unimodal chi2 dist.
+    NGC1667 - 30.54 (really severe wavelength mismatch between blue & red) - unimodal chi2 dist.
+    NGC5506 - 5.60 (tentative - quite noisy) - bimodal chi2 dist.
+    NGC6860 - 10.22 (really bad - unclear why) - unimodal chi2 dist.
+    NGC7469 - 466.68 (really bad - residuals) - unimodal chi2 dist (but quite messy)
 
+6. Try masking ± 150 Angstroms around Halpha and [OIII], just in a single ppxf run.
+
+    Results:
+    for MCG-03-34-064, whether or not we get a good fit seems to be purely random - you can run the code multiple times and get different fits...
+    When it's bad, the reduced-chi2 is ~44, when it's good it's ~30. What does the hist look like?
+    It is strongly bimodal - a small peak at 30 and a much larger one at 50.
+    Same situation for NGC5506, but not for the other galaxies with poor fits.
+
+7. Options:
+    1. Find a robust way to ensure a good fit for all of these galaxies, or 
+    2. Exclude them from the analysis.
+
+
+Exploring option 1:
+
+    ESO362-G18 - 29.51 (tentative - residuals) - unimodal chi2 dist.
+    NGC424 - 19.32 (tentative - residuals) - unimodal chi2 dist.
+
+    Done:
+        MCG-03-34-064
+        FAIRALL49
+        NGC6860
+        NGC424
+        NGC1667
+
+    Galaxies to abandon:
+        NGC5506 - really noisy... better just stick with current results 
+        IC4329A? - really hard to fine tune - abs. features are shallow... 
+        NGC7469 - simply cannot get fit to work...
+
+        
+
++-----------------------------------------------------------------+
+        
 A note on indexing and age cutoffs:
     in compute_lw_age():
         input age_thresh_upper (= tau_cutoff)
@@ -35,14 +81,14 @@ A note on indexing and age cutoffs:
 TODO: need to repeat all of this for the other apertures, too.
 
 """
-import sys
+import os, sys
 
+import multiprocessing
 import numpy as np
 from numpy.random import RandomState
-import pandas as pd
 from tqdm import tqdm
 
-from settings import isochrones, Aperture, get_aperture_coords, gals_all
+from settings import isochrones, Aperture, gals_all, test_path
 from load_galaxy_spectrum import load_galaxy_spectrum
 from ppxftests.run_ppxf import run_ppxf, add_stuff_to_df
 from ppxftests.sfhutils import compute_lw_age, compute_mw_age
@@ -51,6 +97,10 @@ from ppxftests.ppxf_plot import ppxf_plot
 import matplotlib.pyplot as plt
 plt.ion()   
 plt.close("all")
+
+import numpy as np
+
+import matplotlib.pyplot as plt
 
 ###########################################################################
 # Helper function for running MC simulations
@@ -90,42 +140,64 @@ def ppxf_helper(args):
 # User options
 savefigs = True
 
-# x and y coordinates in DataCube corresponding to the chosen aperture
-aperture = Aperture[sys.argv[1]]
-rr, cc = get_aperture_coords(aperture)
+# List of Galaxies
+if len(sys.argv) > 1:
+    gals = sys.argv[1:]
+else:
+    gals = gals_all
 
-# DataFrame storing reduced-chi2 for each galaxy 
-df = pd.DataFrame(index=gals_all, columns=["pp (clean)", "pp (no clean)", "reduced-chi2 (clean)", "reduced-chi2 (no clean)"])
+niters = 20
+nthreads = 20
 
 ###########################################################################
 # Run ppxf and plot 
-for gal in tqdm(gals_all[:1]):
-
-    # Load spectrum
-    lambda_vals_obs_A, lambda_vals_rest_A, spec, spec_cont_only, spec_err, norm, bad_pixel_ranges_A =\
-        load_galaxy_spectrum(gal, aperture, plotit=True)
+for gal in gals:
+    for aperture in [Aperture.RE1, Aperture.ONEKPC, Aperture.FOURAS]:
     
-    seeds = list(np.random.randint(low=0, high=100 * 1, size=1))
-    pp_noclean = ppxf_helper([seeds[0], spec_cont_only * norm, spec_err * norm, lambda_vals_rest_A, bad_pixel_ranges_A, False])
-    pp_clean = ppxf_helper([seeds[0], spec_cont_only * norm, spec_err * norm, lambda_vals_rest_A, bad_pixel_ranges_A, True])
+        # Load spectrum with additional wavelength regions masked
+        lambda_vals_obs_A, lambda_vals_rest_A, spec, spec_cont_only, spec_err, norm, bad_pixel_ranges_masked_A =\
+            load_galaxy_spectrum(gal, aperture, plotit=False)
 
-    df.loc[gal, "pp (clean)"] = pp_clean
-    df.loc[gal, "pp (no clean)"] = pp_noclean
-    df.loc[gal, "reduced-chi2 (clean)"] = pp_clean.chi2
-    df.loc[gal, "reduced-chi2 (no clean)"] = pp_noclean.chi2
-    df.loc[gal, "Number of pixels masekd out with CLEAN"] = len(pp_noclean.goodpixels) - len(pp_clean.goodpixels)
+        # PPXF: MC simulations
+        # Input arguments
+        seeds = list(np.random.randint(low=0, high=100 * niters, size=niters))
+        args_list = [[s, spec_cont_only * norm, spec_err * norm, lambda_vals_rest_A, bad_pixel_ranges_masked_A, False] for s in seeds]
 
-    # Plot the fit
-    fig, axs = plt.subplots(nrows=2, figsize=(10, 7.5))
-    ppxf_plot(pp_noclean, ax=axs[0])
-    ppxf_plot(pp_clean, ax=axs[1])
-    axs[0].set_title(gal)
-    # For now, saving to the regular directory, not the paper one
-    if savefigs:
-        plt.gcf().savefig(f"{gal}_clean_vs_noclean_{aperture.name}.pdf", format="pdf", bbox_inches="tight")
+        # Run in parallel
+        with multiprocessing.Pool(nthreads) as pool:
+             pp_list = list(tqdm(pool.imap(ppxf_helper, args_list), total=niters))
 
+        fig, ax = plt.subplots(nrows=1, figsize=(15, 5))
+        ppxf_plot(pp_list[0], ax=ax)
+        for pp in pp_list[1:]:
+            ax.plot(pp.lam, pp.bestfit, alpha=0.3, color="r", lw=0.75)
+        ax.set_ylim([None, ax.get_ylim()[1] * 1.3])
+        ax.set_title(f"{gal} - {aperture.name}")
+
+        if savefigs:
+            plt.gcf().savefig(os.path.join(test_path, f"{gal}_MC_test_{aperture.name}.pdf"), format="pdf", bbox_inches="tight")
 
 sys.exit()
+    # seeds = list(np.random.randint(low=0, high=100 * 1, size=1))
+    # pp_noclean = ppxf_helper([seeds[0], spec_cont_only * norm, spec_err * norm, lambda_vals_rest_A, bad_pixel_ranges_A, False])
+    # pp_clean = ppxf_helper([seeds[0], spec_cont_only * norm, spec_err * norm, lambda_vals_rest_A, bad_pixel_ranges_A, True])
+
+    # df.loc[gal, "pp (clean)"] = pp_clean
+    # df.loc[gal, "pp (no clean)"] = pp_noclean
+    # df.loc[gal, "reduced-chi2 (clean)"] = pp_clean.chi2
+    # df.loc[gal, "reduced-chi2 (no clean)"] = pp_noclean.chi2
+    # df.loc[gal, "Number of pixels masekd out with CLEAN"] = len(pp_noclean.goodpixels) - len(pp_clean.goodpixels)
+
+    # # Plot the fit
+    # fig, axs = plt.subplots(nrows=2, figsize=(10, 7.5))
+    # ppxf_plot(pp_noclean, ax=axs[0])
+    # ppxf_plot(pp_clean, ax=axs[1])
+    # axs[0].set_title(gal)
+    # # For now, saving to the regular directory, not the paper one
+    # if savefigs:
+    #     plt.gcf().savefig(f"{gal}_clean_vs_noclean_{aperture.name}.pdf", format="pdf", bbox_inches="tight")
+
+
 
 """
 Gals w/ bad fits:
