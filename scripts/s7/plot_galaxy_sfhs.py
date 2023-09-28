@@ -9,7 +9,7 @@ import matplotlib.pyplot as plt
 plt.ion()
 plt.close("all")
 
-from IPython.core.debugger import Tracer
+# from IPython.core.debugger import Tracer
 
 """
 For each galaxy in our sample, plot the SFH from ppxf.
@@ -99,7 +99,7 @@ for ap in aps:
         ax.set_title(gal)
 
         if debug:
-            Tracer()()
+            # Tracer()()
 
         if savefigs:
             fig.savefig(os.path.join(fig_path, f"{gal}_sfh_{ap}.pdf"), bbox_inches="tight", format="pdf")   

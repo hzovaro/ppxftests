@@ -15,6 +15,8 @@ TODO:
     3b. change directory structure to preserve fits and figures with clean turned on.
         Try plotting figures w/ clean turned on to check paths, etc. work.
     3c. re-run on avatar.
+            First just run the RE1 ones to see how long they take (& if any bugs arise).
+            Then queue the others.
 
 A note on indexing and age cutoffs:
     in compute_lw_age():

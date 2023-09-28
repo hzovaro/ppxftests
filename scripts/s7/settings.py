@@ -4,7 +4,7 @@ import os
 
 from ppxftests.ssputils import log_rebin_and_convolve_stellar_templates
 
-CLEAN = True   # Whether to use the CLEAN keyword in ppxf
+CLEAN = False   # Whether to use the CLEAN keyword in ppxf
 FWHM_WIFES_INST_A = 1.4   # WiFeS LSF resolution
 
 # Load the stellar ages to put in the DataFrame

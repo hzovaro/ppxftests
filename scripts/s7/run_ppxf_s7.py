@@ -1,28 +1,24 @@
 import matplotlib
-matplotlib.use("agg")  # Use silent backend for running on avatar
+# matplotlib.use("agg")  # Use silent backend for running on avatar
 
 import sys, os
 import multiprocessing
 import numpy as np
 from numpy.random import RandomState
 import pandas as pd
-from astropy.io import fits
 from tqdm import tqdm
 from time import time
 
 from settings import CLEAN, ppxf_output_path, fig_path, Aperture, get_aperture_coords, gals_all
 from load_galaxy_spectrum import load_galaxy_spectrum
-from ppxftests.run_ppxf import run_ppxf, add_stuff_to_df
+from ppxftests.run_ppxf import run_ppxf, add_stuff_to_df, ppxf_plot
 
 import matplotlib.pyplot as plt
 plt.ion()   
 plt.close("all")
 
-from IPython.core.debugger import Tracer 
-
 ###########################################################################
 # User options
-###########################################################################
 args = sys.argv
 if args[1].upper() == "DEBUG":
     debug = True  # If true, run on only 20 threads & save to a new DataFrame with 'DEBUG' in the file name
@@ -44,7 +40,6 @@ else:
 
 ###########################################################################
 # Helper function for running MC simulations
-###########################################################################
 def ppxf_helper(args):
     # Unpack arguments
     seed, spec, spec_err, lambda_vals_rest_A, bad_pixel_ranges_A = args
@@ -106,6 +101,14 @@ for gal in gals:
     print(f"Gal {gal}: MC simulations: total time in ppxf: {time() - t:.2f} s")
 
     ##############################################################################
+    # Plot the fit from one of the runs
+    pp = pp_mc_list[0]
+    fig, ax = plt.subplots(nrows=1, figsize=(10, 3.375))
+    ppxf_plot(pp, ax=ax)
+    ax.set_title(gal + r" (Reduced-$\chi^2 = %.2f$)" % pp.chi2)
+    plt.gcf().savefig(os.path.join(fig_path, f"{gal}_{aperture.name}.pdf"), format="pdf", bbox_inches="tight")
+
+    ##############################################################################
     # Extract information for DataFrame
     plot_fname = f"MC_iter_{gal}_{aperture.name}_debug.pdf" if debug else f"MC_iter_{gal}_{aperture.name}.pdf"
     try:
@@ -115,8 +118,7 @@ for gal in gals:
         thisrow = add_stuff_to_df(pp_mc_list)
     thisrow["Galaxy"] = gal
 
-    df = df.append(thisrow, ignore_index=True)
-
     # Save 
+    df = df.append(thisrow, ignore_index=True)
     df.to_hdf(os.path.join(ppxf_output_path, df_fname), key=aperture.name)
     print(f"Finished processing {gal}!")
