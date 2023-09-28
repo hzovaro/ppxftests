@@ -1,5 +1,5 @@
 import matplotlib
-# matplotlib.use("agg")  # Use silent backend for running on avatar
+matplotlib.use("agg")  # Use silent backend for running on avatar
 
 import sys, os
 import multiprocessing
@@ -25,7 +25,7 @@ if args[1].upper() == "DEBUG":
     args = args[1:]  
 else:
     debug = False
-nthreads = 5 if debug else 56
+nthreads = 10 if debug else 56
 niters = 10 if debug else 1000
 
 # x and y coordinates in DataCube corresponding to the chosen aperture
