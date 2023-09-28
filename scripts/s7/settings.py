@@ -18,6 +18,7 @@ _, _, metallicities, ages =\
 s7_data_path = "/priv/meggs3/u5708159/S7/mar23"
 lzifu_input_path = f"{s7_data_path}/LZIFU/data/"
 lzifu_output_path = f"{s7_data_path}/LZIFU/products/"
+test_path = f"{s7_data_path}/ppxf/tests/"  # Path for storing misc. files/figures from tests
 if CLEAN:
     ppxf_output_path = f"{s7_data_path}/ppxf/clean/"
     fig_path = f"{s7_data_path}/ppxf/figs_clean/paper/"
@@ -38,3 +39,44 @@ def get_aperture_coords(aperture):
 
 # List of all galaxies
 gals_all = [g.strip("\n") for g in open(os.path.join(s7_data_path, "gal_list.txt")).readlines()]
+
+# Extra wavelength regions to mask out for some galaxies with particularly bad emission line residuals or other issues 
+extra_bad_pixel_ranges_dict = {
+    "ESO362-G18": [
+        (4861 - 75, 5007 + 75),
+        (6562.8 - 100, 6562.8 + 100),
+    ],
+    "FAIRALL49": [
+        (4861 - 75, 5007 + 75),
+        (6562.8 - 100, 6562.8 + 100),
+    ],
+    "IC4329A": [  # NOTE: not successful
+        (4861 - 75, 5007 + 75),  # Hbeta + [OIII]
+        (6562.8 - 300, 6562.8 + 300),  # Halpha 
+        (5889 - 100, 5889 + 100),  # NaD
+    ],
+    "MCG-03-34-064": [
+        (4861 - 75, 5007 + 75),  # Hbeta + [OIII]
+        (6562.8 - 100, 6562.8 + 100),  # Halpha 
+        (4650, 5400),
+        (5600, 5900),
+    ],
+    "NGC424": [
+        (4861 - 100, 5007 + 100),  # Hbeta + [OIII]
+        (5300 - 25, 5300 + 25), # Strong mystery emission line
+        (5718 - 25, 5718 + 25), # Strong mystery emission line
+        (6562.8 - 300, 6562.8 + 150),  # Halpha plus strong blueward emission line
+    ],
+    "NGC1667": [  # Really bad flux cal error between blue/red arms
+        (5500, 9000)
+    ],
+    "NGC6860": [
+        (4861 - 100, 5007 + 100), # Hbeta + [OIII]
+        (5000, 5500),
+        (6562.8 - 200, 6562.8 + 200), # Halpha 
+    ],
+    "NGC7469": [  # NOTE: not successful
+        (4100, 6000),
+        (6300, 9000)
+    ],
+}
