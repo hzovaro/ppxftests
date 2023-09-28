@@ -6,3 +6,4 @@
 __pycache__/*
 **/__pycache__/*
 notebooks/.ipynb_checkpoints/
+.vscode/
