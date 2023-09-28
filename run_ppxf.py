@@ -1,17 +1,3 @@
-###############################################################################
-#
-#   File:       ppxf_integrated.py
-#   Author:     Henry Zovaro
-#   Email:      henry.zovaro@anu.edu.au
-#
-#   Description:
-#   Run ppxf on a spectrum extracted from the central regions of an S7 datacube
-#   to determine the star formation history and emission line properties.
-#
-#   Copyright (C) 2021 Henry Zovaro
-#
-###############################################################################
-#!/usr/bin/env python
 import sys, os
 
 import matplotlib
@@ -20,24 +6,18 @@ from time import time
 
 from scipy import constants
 import numpy as np
-from numpy.random import RandomState
 import extinction
-from itertools import product
 import multiprocessing
-import pandas as pd
 
 from ppxf.ppxf import ppxf
 import ppxf.ppxf_util as util
 
-from cosmocalc import get_dist
 from log_rebin_errors import log_rebin_errors
 
 from ppxftests.ssputils import load_ssp_templates, get_bin_edges_and_widths, log_rebin_and_convolve_stellar_templates
 from ppxftests.sfhutils import load_sfh, compute_mw_age, compute_lw_age, compute_cumulative_mass, compute_cumulative_light
 from ppxftests.mockspec import FWHM_WIFES_INST_A
-from ppxftests.ppxf_plot import ppxf_plot, plot_sfh_mass_weighted
-
-from IPython.core.debugger import Tracer
+from ppxftests.ppxf_plot import ppxf_plot
 
 ##############################################################################
 # Plotting settings
