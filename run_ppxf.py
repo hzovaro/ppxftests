@@ -639,7 +639,7 @@ def run_ppxf(spec, spec_err, lambda_vals_A, z,
         r1_A, r2_A = r_A
         r1_px = np.nanargmin(np.abs(np.exp(lambda_vals_log) - r1_A))
         r2_px = np.nanargmin(np.abs(np.exp(lambda_vals_log) - r2_A))
-        bad_px_mask[r1_px:r2_px] = True
+        bad_px_mask[r1_px:r2_px + 1] = True
     good_px = np.squeeze(np.argwhere(~bad_px_mask))
 
     # For debugging: check the bad pixel ranges
