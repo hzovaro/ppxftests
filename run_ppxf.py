@@ -132,7 +132,8 @@ def add_stuff_to_df(pp_mc_list,
                     R_V=4.05, 
                     plotit=False,
                     plot_fname=None,  # Only used for plotting
-                    savefig=False,
+                    fig_path=None, # Only used for plotting
+                    savefig=False, # Only used for plotting
                     gal=None,  # Only used for printing error messages
                     ):
 
@@ -471,7 +472,7 @@ def add_stuff_to_df(pp_mc_list,
         ax_iter += 1
 
     if plotit and savefig:
-        fig_hist.savefig(os.path.join("/priv/meggs3/u5708159/S7/mar23/ppxf/figs/", plot_fname), bbox_inches="tight", format="pdf")
+        fig_hist.savefig(os.path.join(fig_path, plot_fname), bbox_inches="tight", format="pdf")
 
     # Double-check that the quantile measurements are consistent with the means 
     def check_for_nans(r, col):
