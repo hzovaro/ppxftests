@@ -42,7 +42,7 @@ Only show x-axis labels on the top/bottom w/ rotation.
 ###############################################################################
 weighttype = "LW"
 
-fig, axs = plt.subplots(nrows=3, ncols=1, figsize=(18, 20))
+fig, axs = plt.subplots(nrows=3, ncols=1, figsize=(15, 15))
 ax_AGN, ax_AV, ax_ages = axs
 fig.subplots_adjust(hspace=0)
 
