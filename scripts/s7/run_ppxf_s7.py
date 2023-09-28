@@ -107,7 +107,7 @@ for gal in gals:
 
     ##############################################################################
     # Extract information for DataFrame
-    plot_fname = plot_fname=f"MC_iter_{gal}_{aperture.name}_debug.pdf" if debug else plot_fname=f"MC_iter_{gal}_{aperture.name}.pdf"
+    plot_fname = f"MC_iter_{gal}_{aperture.name}_debug.pdf" if debug else f"MC_iter_{gal}_{aperture.name}.pdf"
     try:
         thisrow = add_stuff_to_df(pp_mc_list, plotit=True, fig_path=fig_path, plot_fname=plot_fname, savefig=True, gal=gal)
     except:
