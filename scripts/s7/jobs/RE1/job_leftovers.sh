@@ -7,4 +7,10 @@
 #PBS -k oe
 
 cd /home/u5708159/python/Modules/ppxftests/scripts/s7
-python run_ppxf_s7.py RE1 IC4995 ESO565-G19 
+
+python run_ppxf_s7.py RE1 MCG-03-34-064
+python run_ppxf_s7.py RE1 FAIRALL49
+python run_ppxf_s7.py RE1 NGC6860
+python run_ppxf_s7.py RE1 NGC424
+python run_ppxf_s7.py RE1 ESO362-G18
+python run_ppxf_s7.py RE1 NGC1667

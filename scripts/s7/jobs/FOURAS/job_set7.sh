@@ -7,6 +7,7 @@
 #PBS -k oe
 
 cd /home/u5708159/python/Modules/ppxftests/scripts/s7
+
 python run_ppxf_s7.py FOURAS NGC1365
 python run_ppxf_s7.py FOURAS NGC3393
 python run_ppxf_s7.py FOURAS NGC4507

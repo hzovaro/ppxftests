@@ -7,6 +7,7 @@
 #PBS -k oe
 
 cd /home/u5708159/python/Modules/ppxftests/scripts/s7
+
 python run_ppxf_s7.py RE1 IC1657
 python run_ppxf_s7.py RE1 IC1816
 python run_ppxf_s7.py RE1 IC4777

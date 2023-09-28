@@ -7,6 +7,7 @@
 #PBS -k oe
 
 cd /home/u5708159/python/Modules/ppxftests/scripts/s7
+
 python run_ppxf_s7.py FOURAS IC5063
 python run_ppxf_s7.py FOURAS IRAS11215-2806
 python run_ppxf_s7.py FOURAS MARK573
