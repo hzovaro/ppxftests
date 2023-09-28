@@ -7,7 +7,14 @@ In the process of making figures for the paper showing fits to individual galaxi
 
 TODO:
 1. In the documentation, it says only to use the CLEAN keyword if the reduced-chi2 of the fit is ~1. So, for each galaxy, check pp.chi2. If they are all >1, then it's probably best to repeat everything with CLEAN turned off.
+    A: chi2 > 1 for the vast majority of galaxies. Probably best to re-run with CLEAN turned off. 
 2. How does the chi2 change from MC run to MC run? Is there a lot of variation? Test: run ~20 iterations for say ~3 galaxies & look at the MC plots.
+    A: it doesn't change by all that much over 100 runs (width of distribution < 1)
+3. Re-run w/ clean turned off.
+    3a. run in debug mode to double-check everything looks OK.
+    3b. change directory structure to preserve fits and figures with clean turned on.
+        Try plotting figures w/ clean turned on to check paths, etc. work.
+    3c. re-run on avatar.
 
 A note on indexing and age cutoffs:
     in compute_lw_age():
@@ -26,41 +33,24 @@ A note on indexing and age cutoffs:
 TODO: need to repeat all of this for the other apertures, too.
 
 """
-import sys, os 
+import sys
 
-import multiprocessing
 import numpy as np
 from numpy.random import RandomState
 import pandas as pd
-from astropy.io import fits
-from time import time
 from tqdm import tqdm
 
-from ppxftests.run_ppxf import run_ppxf, add_stuff_to_df, ppxf_plot
-from ppxftests.sfhutils import ages_padova as ages
+from settings import isochrones, Aperture, get_aperture_coords, gals_all
+from load_galaxy_spectrum import load_galaxy_spectrum
+from ppxftests.run_ppxf import run_ppxf, add_stuff_to_df
 from ppxftests.sfhutils import compute_lw_age, compute_mw_age
-isochrones="Padova"
+from ppxftests.ppxf_plot import ppxf_plot
 
 import matplotlib.pyplot as plt
 plt.ion()   
 plt.close("all")
 
-from IPython.core.debugger import Tracer 
-
-# Paths
-lzifu_input_path = "/priv/meggs3/u5708159/S7/mar23/LZIFU/data/"
-lzifu_output_path = "/priv/meggs3/u5708159/S7/mar23/LZIFU/products/"
-s7_data_path = "/priv/meggs3/u5708159/S7/mar23/"
-fig_path = "/priv/meggs3/u5708159/S7/mar23/ppxf/figs/"
-
-# Aperture type
-from enum import Enum
-class Aperture(Enum):
-    RE1 = 0
-    FOURAS = 1
-    SDSS = 2
-    ONEKPC = 3
-
+###########################################################################
 # Helper function for running MC simulations
 def ppxf_helper(args):
     # Unpack arguments
@@ -83,7 +73,7 @@ def ppxf_helper(args):
 
     # Run ppxf
     pp = run_ppxf(spec=spec_noise, spec_err=spec_err, lambda_vals_A=lambda_vals_rest_A,
-                  isochrones="Padova",
+                  isochrones=isochrones,
                   bad_pixel_ranges_A=bad_pixel_ranges_A,
                   z=0.0, ngascomponents=1,
                   fit_gas=False, tie_balmer=False,
@@ -98,55 +88,21 @@ def ppxf_helper(args):
 # User options
 savefigs = True
 
-# List of Galaxies
-gals = [g.strip("\n") for g in open(os.path.join(s7_data_path, "gal_list.txt")).readlines()]
-
 # x and y coordinates in DataCube corresponding to the chosen aperture
 aperture = Aperture[sys.argv[1]]
-rr, cc = np.unravel_index(aperture.value, (2, 2))
+rr, cc = get_aperture_coords(aperture)
 
 # DataFrame storing reduced-chi2 for each galaxy 
-df = pd.DataFrame(index=gals, columns=["pp (clean)", "pp (no clean)", "reduced-chi2 (clean)", "reduced-chi2 (no clean)"])
+df = pd.DataFrame(index=gals_all, columns=["pp (clean)", "pp (no clean)", "reduced-chi2 (clean)", "reduced-chi2 (no clean)"])
 
 ###########################################################################
 # Run ppxf and plot 
-for gal in tqdm(gals[2:4]):
+for gal in tqdm(gals_all[:1]):
 
-    # Load the aperture spectrum
-    hdulist_in = fits.open(os.path.join(lzifu_input_path, f"{gal}.fits.gz"))
+    # Load spectrum
+    lambda_vals_obs_A, lambda_vals_rest_A, spec, spec_cont_only, spec_err, norm, bad_pixel_ranges_A =\
+        load_galaxy_spectrum(gal, aperture, plotit=True)
     
-    spec = hdulist_in["PRIMARY"].data[:, rr, cc]
-    spec_err = np.sqrt(hdulist_in["VARIANCE"].data[:, rr, cc])
-    norm = hdulist_in["NORM"].data[rr, cc]
-    z = hdulist_in[0].header["Z"]
-
-    N_lambda = hdulist_in[0].header["NAXIS3"]
-    dlambda_A = hdulist_in[0].header["CDELT3"]
-    lambda_0_A = hdulist_in[0].header["CRVAL3"]
-    lambda_vals_obs_A = np.array(list(range(N_lambda))) * dlambda_A + lambda_0_A
-    lambda_vals_rest_A = lambda_vals_obs_A / (1 + z)
-
-    # Define bad pixel ranges
-    bad_pixel_ranges_A = [
-         [(6300 - 10) / (1 + z), (6300 + 10) / (1 + z)], # Sky line at 6300
-         [(5577 - 10) / (1 + z), (5577 + 10) / (1 + z)], # Sky line at 5577
-         [(6360 - 10) / (1 + z), (6360 + 10) / (1 + z)], # Sky line at 6360
-         [(5700 - 10) / (1 + z), (5700 + 10) / (1 + z)], # Sky line at 5700                              
-         [(5889 - 30), (5889 + 20)], # Interstellar Na D + He line 
-         [(5889 - 10) / (1 + z), (5889 + 10) / (1 + z)], # solar NaD line
-    ]
-
-    # Load the LZIFU fit
-    lzifu_fname = f"{gal}_merge_comp.fits"
-    hdulist = fits.open(os.path.join(lzifu_output_path, lzifu_fname))
-    spec_cont_lzifu = hdulist["CONTINUUM"].data[:, rr, cc] 
-    spec_elines = hdulist["LINE"].data[:, rr, cc]
-    spec_cont_only = spec - spec_elines
-
-    ##############################################################################
-    # PPXF: MC simulations
-    # Input arguments
-    """
     seeds = list(np.random.randint(low=0, high=100 * 1, size=1))
     pp_noclean = ppxf_helper([seeds[0], spec_cont_only * norm, spec_err * norm, lambda_vals_rest_A, bad_pixel_ranges_A, False])
     pp_clean = ppxf_helper([seeds[0], spec_cont_only * norm, spec_err * norm, lambda_vals_rest_A, bad_pixel_ranges_A, True])
@@ -156,32 +112,15 @@ for gal in tqdm(gals[2:4]):
     df.loc[gal, "reduced-chi2 (clean)"] = pp_clean.chi2
     df.loc[gal, "reduced-chi2 (no clean)"] = pp_noclean.chi2
     df.loc[gal, "Number of pixels masekd out with CLEAN"] = len(pp_noclean.goodpixels) - len(pp_clean.goodpixels)
-    """
 
-    ##############################################################################
-    # Input arguments
-    niters = 100
-    nthreads = 20
-    seeds = list(np.random.randint(low=0, high=100 * niters, size=niters))
-    args_list = [[s, spec_cont_only * norm, spec_err * norm, lambda_vals_rest_A, bad_pixel_ranges_A, False] for s in seeds]
-
-    # Run in parallel
-    print(f"Gal {gal}: MC simulations: running ppxf on {nthreads} threads...")
-    t = time()
-    with multiprocessing.Pool(nthreads) as pool:
-        pp_mc_list = list(tqdm(pool.imap(ppxf_helper, args_list), total=niters))
-    print(f"Gal {gal}: MC simulations: total time in ppxf: {time() - t:.2f} s")
-    thisrow = add_stuff_to_df(pp_mc_list, pp_mc_list[0], gal=gal, plotit=True, savefig=True, plot_fname=f"{gal}_MC_check_chi2.pdf")
-
-    ##############################################################################
-    # # Plot the actual fit.
-    # fig, axs = plt.subplots(nrows=2, figsize=(10, 7.5))
-    # ppxf_plot(pp_noclean, ax=axs[0])
-    # ppxf_plot(pp_clean, ax=axs[1])
-    # axs[0].set_title(gal)
-    # # For now, saving to the regular directory, not the paper one
-    # if savefigs:
-    #     plt.gcf().savefig(os.path.join(fig_path, f"{gal}_clean_vs_noclean_{aperture.name}.pdf"), format="pdf", bbox_inches="tight")
+    # Plot the fit
+    fig, axs = plt.subplots(nrows=2, figsize=(10, 7.5))
+    ppxf_plot(pp_noclean, ax=axs[0])
+    ppxf_plot(pp_clean, ax=axs[1])
+    axs[0].set_title(gal)
+    # For now, saving to the regular directory, not the paper one
+    if savefigs:
+        plt.gcf().savefig(f"{gal}_clean_vs_noclean_{aperture.name}.pdf", format="pdf", bbox_inches="tight")
 
 
 sys.exit()
