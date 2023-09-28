@@ -88,11 +88,11 @@ import numpy as np
 from numpy.random import RandomState
 from tqdm import tqdm
 
-from settings import isochrones, Aperture, gals_all, test_path
+from settings import isochrones, Aperture, gals_all, fig_path, ages, metallicities
 from load_galaxy_spectrum import load_galaxy_spectrum
 from ppxftests.run_ppxf import run_ppxf, add_stuff_to_df
 from ppxftests.sfhutils import compute_lw_age, compute_mw_age
-from ppxftests.ppxf_plot import ppxf_plot
+from ppxftests.ppxf_plot import ppxf_plot, plot_sfh_light_weighted
 
 import matplotlib.pyplot as plt
 plt.ion()   
@@ -151,7 +151,7 @@ nthreads = 20
 
 ###########################################################################
 # Run ppxf and plot 
-for gal in gals:
+for gal in tqdm(gals):
     for aperture in [Aperture.RE1, Aperture.ONEKPC, Aperture.FOURAS]:
     
         # Load spectrum with additional wavelength regions masked
@@ -167,15 +167,21 @@ for gal in gals:
         with multiprocessing.Pool(nthreads) as pool:
              pp_list = list(tqdm(pool.imap(ppxf_helper, args_list), total=niters))
 
+        # Plot the fit 
         fig, ax = plt.subplots(nrows=1, figsize=(15, 5))
         ppxf_plot(pp_list[0], ax=ax)
         for pp in pp_list[1:]:
             ax.plot(pp.lam, pp.bestfit, alpha=0.3, color="r", lw=0.75)
         ax.set_ylim([None, ax.get_ylim()[1] * 1.3])
         ax.set_title(f"{gal} - {aperture.name}")
-
         if savefigs:
-            plt.gcf().savefig(os.path.join(test_path, f"{gal}_MC_test_{aperture.name}.pdf"), format="pdf", bbox_inches="tight")
+            plt.gcf().savefig(os.path.join(fig_path, f"{gal}_MC_fits_{aperture.name}.pdf"), format="pdf", bbox_inches="tight")
+
+        # Plot the SFH
+        fig, ax = plt.subplots(nrows=1, figsize=(7.5, 3.333))
+        plot_sfh_light_weighted(pp_list[0].sfh_lw, ages, metallicities, ax=ax)
+        if savefigs:
+            plt.gcf().savefig(os.path.join(fig_path, f"{gal}_MC_sfh_{aperture.name}.pdf"), format="pdf", bbox_inches="tight")
 
 sys.exit()
     # seeds = list(np.random.randint(low=0, high=100 * 1, size=1))
