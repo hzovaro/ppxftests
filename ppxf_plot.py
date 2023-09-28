@@ -69,7 +69,7 @@ def plot_sfh_mass_weighted(sfh_mass_weighted, ages, metallicities,
     
     # Plot the SFH
     sfh_mass_weighted[sfh_mass_weighted == 0] = np.nan
-    cmap = matplotlib.cm.viridis_r
+    cmap = matplotlib.cm.get_cmap("magma_r").copy()
     cmap.set_bad('#DADADA')
     m = ax.imshow(np.log10(sfh_mass_weighted), cmap=cmap, 
                   origin="lower", aspect="auto")
@@ -79,7 +79,7 @@ def plot_sfh_mass_weighted(sfh_mass_weighted, ages, metallicities,
     ax.set_yticks(range(len(metallicities)))
     ax.set_yticklabels(["{:.3f}".format(met / 0.02) for met in metallicities])
     ax.set_ylabel(r"Metallicity ($Z_\odot$)")
-    cax.set_ylabel(r"Template weight ($\log_{10}\left[\rm M_\odot\right]$)", fontsize="small")
+    cax.set_ylabel(r"Template weight" + "\n" + r"($\log_{10}\left[\rm M_\odot\right]$)", fontsize="small")
     ax.set_xticks(range(len(ages)))
     ax.set_xlabel("Age (Myr)")
     ax.set_xticklabels(["{:}".format(age / 1e6) for age in ages], rotation="vertical", fontsize="x-small")
@@ -109,7 +109,7 @@ def plot_sfh_light_weighted(sfh_light_weighted, ages, metallicities,
     
     # Plot the SFH
     sfh_light_weighted[sfh_light_weighted == 0] = np.nan
-    cmap = matplotlib.cm.viridis_r
+    cmap = matplotlib.cm.get_cmap("viridis_r").copy()
     cmap.set_bad('#DADADA')
     m = ax.imshow(np.log10(sfh_light_weighted), cmap=cmap, 
                   origin="lower", aspect="auto")
@@ -119,7 +119,7 @@ def plot_sfh_light_weighted(sfh_light_weighted, ages, metallicities,
     ax.set_yticks(range(len(metallicities)))
     ax.set_yticklabels(["{:.3f}".format(met / 0.02) for met in metallicities])
     ax.set_ylabel(r"Metallicity ($Z_\odot$)")
-    cax.set_ylabel(r"Template weight ($\log_{10} \left[\rm M_\odot\,erg\,s^{-1}\,Å^{-1}\right]$)", fontsize="small")
+    cax.set_ylabel(r"Template weight" + "\n" + r"($\log_{10} \left[\rm erg\,s^{-1}\,Å^{-1}\right]$)", fontsize="small")
     ax.set_xticks(range(len(ages)))
     ax.set_xlabel("Age (Myr)")
     ax.set_xticklabels(["{:}".format(age / 1e6) for age in ages], rotation="vertical", fontsize="x-small")
@@ -143,16 +143,16 @@ def plot_sfr(sfr_mean, ages, metallicities,
     else:
         fig = ax.get_figure()
     # Plot the SFH
-    ax.step(x=range(len(ages)), y=sfr_mean, color="black", where="mid")
+    ax.step(x=np.arange(len(ages)) + 0.5, y=sfr_mean, color="blue", where="mid")
     
     # Decorations
     ax.grid()
     ax.set_yscale("log")
-    ax.set_ylabel(r"Mean SFR ($\log_{10} \, \rm M_\odot \, yr^{-1}$)", fontsize="small")
+    ax.set_ylabel(r"SFR ($\log_{10} \, \rm M_\odot \, yr^{-1}$)", fontsize="small")
     ax.set_xticks(range(len(ages)))
     ax.set_xlabel("Age (Myr)")
     ax.set_xticklabels(["{:}".format(age / 1e6) for age in ages], rotation="vertical", fontsize="x-small")
-    ax.autoscale(axis="x", tight=True, enable=True)
+    ax.set_xlim([0, len(ages)])
     
     return
 
@@ -162,13 +162,13 @@ def ppxf_plot(pp, ax=None):
     Produces a plot of the pPXF best fit.
     """
     if ax is None:
-        plt.figure()
+        plt.figure(figsize=(12, 3.5))
         ax = plt.gca()
     if pp.lam is None:
         ax.set_xlabel("Pixels")
         x = np.arange(pp.galaxy.size)
     else:
-        ax.set_xlabel(r"Observer-frame wavelength (\AA)")
+        ax.set_xlabel("Observer-frame wavelength (Å)")
         x = pp.lam
 
     resid = pp.galaxy - pp.bestfit
