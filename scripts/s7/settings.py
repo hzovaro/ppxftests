@@ -1,4 +1,5 @@
 from enum import Enum
+import numpy as np
 import os
 
 from ppxftests.ssputils import log_rebin_and_convolve_stellar_templates
@@ -30,6 +31,10 @@ class Aperture(Enum):
     FOURAS = 1
     SDSS = 2
     ONEKPC = 3
+
+def get_aperture_coords(aperture):
+    """Get the coordinates of the spectrum in the FITS files corresponding to the input aperture."""
+    return np.unravel_index(aperture.value, (2, 2))
 
 # List of all galaxies
 gals_all = [g.strip("\n") for g in open(os.path.join(s7_data_path, "gal_list.txt")).readlines()]
