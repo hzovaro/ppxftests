@@ -33,6 +33,17 @@ class Aperture(Enum):
     SDSS = 2
     ONEKPC = 3
 
+def get_aperture_label(aperture):
+    """Return a nice LaTeX-formatted string to use in plots."""
+    if aperture == Aperture.RE1:
+        return r"$1R_e$"
+    elif aperture == Aperture.FOURAS:
+        return r"$4''$"
+    elif aperture == Aperture.ONEKPC:
+        return r"$1\,\rm kpc$"  
+    else:
+        raise ValueError()
+
 def get_aperture_coords(aperture):
     """Get the coordinates of the spectrum in the FITS files corresponding to the input aperture."""
     return np.unravel_index(aperture.value, (2, 2))
@@ -80,3 +91,8 @@ extra_bad_pixel_ranges_dict = {
         (6300, 9000)
     ],
 }
+
+gals_unreliable_stellar_measurements = [
+    "IC4329A",
+    "NGC7469",
+]
