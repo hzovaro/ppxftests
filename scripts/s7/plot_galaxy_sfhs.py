@@ -3,20 +3,17 @@ import numpy as np
 import pandas as pd
 from tqdm import tqdm
 
-from ppxftests.ssputils import load_ssp_templates
+from settings import ages, gals_all, fig_path, ppxf_output_path
 
 import matplotlib.pyplot as plt
 plt.ion()
 plt.close("all")
 
-# from IPython.core.debugger import Tracer
+from IPython.core.debugger import Tracer
 
 """
 For each galaxy in our sample, plot the SFH from ppxf.
 """
-
-s7_data_path = "/priv/meggs3/u5708159/S7/mar23/ppxf"
-fig_path = "/priv/meggs3/u5708159/S7/mar23/ppxf/figs/paper"
 
 ###############################################################################
 # Settings
@@ -35,19 +32,14 @@ for ap in aps:
     ###############################################################################
     # Load the DataFrame containing all S7 galaxies
     df_fname = f"s7_ppxf_{ap}.hd5"
-    df_all = pd.read_hdf(os.path.join(s7_data_path, df_fname), key="s7")
-
+    df_all = pd.read_hdf(os.path.join(ppxf_output_path, df_fname), key="S7")
     gals = df_all.index.unique()
     gals = gals.sort_values()
-
-
-    # Get the age & metallicity dimensions
-    _, _, metallicities, ages = load_ssp_templates("Padova")
 
     ###############################################################################
     # Summary plot
     ###############################################################################
-    for gal in tqdm(gals):
+    for gal in tqdm(gals_all):
         # Extract the row in the DataFrame corresponding to this galaxy
         df_gal = df_all[df_all.index == gal]
 
@@ -99,7 +91,7 @@ for ap in aps:
         ax.set_title(gal)
 
         if debug:
-            # Tracer()()
+            Tracer()()
 
         if savefigs:
             fig.savefig(os.path.join(fig_path, f"{gal}_sfh_{ap}.pdf"), bbox_inches="tight", format="pdf")   
