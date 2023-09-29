@@ -3,7 +3,9 @@ import numpy as np
 import pandas as pd
 from tqdm import tqdm
 
-from settings import ages, ppxf_output_path, Aperture, gals_all
+from settings import ages, ppxf_output_path, Aperture, gals_all, gals_unreliable_stellar_measurements
+
+gals_to_include = [g for g in gals_all if g not in gals_unreliable_stellar_measurements]
 
 overwrite_dataframe = True
 
@@ -14,7 +16,7 @@ for ap in [Aperture.FOURAS, Aperture.ONEKPC, Aperture.RE1]:
     df_all = pd.DataFrame()
 
     # One by one, open the DataFrames containing results for individual galaxies
-    for gg, gal in tqdm(enumerate(gals_all)):
+    for gg, gal in tqdm(enumerate(gals_to_include)):
 
         # Filenames
         df_ppxf_fname = f"s7_ppxf_{gal}_{ap.name}.hd5" 
@@ -42,7 +44,7 @@ for ap in [Aperture.FOURAS, Aperture.ONEKPC, Aperture.RE1]:
 
     # Sort
     df_all = df_all.sort_index()
-    df_all["Number"] = np.arange(len(gals_all))
+    df_all["Number"] = np.arange(len(gals_to_include))
 
     # Remove MC stellar kinematics so that they aren't accidentally used instead of the measurements from the VdS fit 
     df_all = df_all.drop(columns=[c for c in df_all if ("sigma_*" in c or "v_*" in c) and "VdS" not in c])
