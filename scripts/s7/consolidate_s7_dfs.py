@@ -28,7 +28,7 @@ for ap in [Aperture.FOURAS, Aperture.ONEKPC, Aperture.RE1]:
         # Compute LW/MW ages at all cutoff ages  
         for age in ages[1:]:
             age_idx = np.nanargmin(np.abs(ages - age))
-            for col in ["MC mean", "MC error", "MC 50th percentile", "MC 16th percentile", "MC 84th percentile", "regularised"]:
+            for col in ["MC mean", "MC error", "MC 50th percentile", "MC 16th percentile", "MC 84th percentile"]:
                 df_thisgal.loc[gal, f"MW age (<{age/1e6:.2f} Myr) ({col})"] =\
                     df_ppxf.loc[gal, f"Mass-weighted age vs. age cutoff ({col})"][age_idx - 1]
                 df_thisgal.loc[gal, f"LW age (<{age/1e6:.2f} Myr) ({col})"] =\
@@ -58,12 +58,12 @@ for ap in [Aperture.FOURAS, Aperture.ONEKPC, Aperture.RE1]:
         df_all.to_hdf(os.path.join(ppxf_output_path, df_fname), key="S7")
 
     # Only save AGN contributions
-    cols = ["x_AGN (total, regularised)", "x_AGN (total, MC mean)", "x_AGN (total, MC error)", "x_AGN (total, MC 16th percentile)", "x_AGN (total, MC 50th percentile)", "x_AGN (total, MC 84th percentile)",]
+    cols = ["x_AGN (total, MC mean)", "x_AGN (total, MC error)", "x_AGN (total, MC 16th percentile)", "x_AGN (total, MC 50th percentile)", "x_AGN (total, MC 84th percentile)",]
     df_agn = df_all[cols].copy()
     df_agn.to_csv(os.path.join(ppxf_output_path, f"s7_ppxf_{ap.name}_xAGN.csv"))
 
     # Only save A_V values
-    cols = ["A_V (regularised)", "A_V (MC mean)", "A_V (MC error)", "A_V (MC 16th percentile)", "A_V (MC 50th percentile)", "A_V (MC 84th percentile)",]
+    cols = ["A_V (MC mean)", "A_V (MC error)", "A_V (MC 16th percentile)", "A_V (MC 50th percentile)", "A_V (MC 84th percentile)",]
     df_av = df_all[cols].copy()
     df_av.to_csv(os.path.join(ppxf_output_path, f"s7_ppxf_{ap.name}_A_V.csv"))
 
