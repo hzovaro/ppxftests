@@ -179,18 +179,18 @@ def ppxf_plot(pp, ax=None):
     # mx = np.max(pp.galaxy[pp.goodpixels])
     resid += mn   # Offset residuals to avoid overlap
     mn1 = np.min(resid[pp.goodpixels])
-    ax.set_ylabel("Relative Flux")
+    ax.set_ylabel(r"$F_\lambda(\lambda)/F_\lambda(4020\,\AA)$")
 
-    ax.plot(x, pp.galaxy, 'k', label='Input spectrum')
+    ax.plot(x, pp.galaxy, 'k', label='Input spectrum', lw=0.5)
     ax.fill_between(x, pp.galaxy + pp.noise, pp.galaxy -
                     pp.noise, alpha=0.6, linewidth=0, color='darkgray')
     ax.plot(x[pp.goodpixels], resid[pp.goodpixels], 'd',
-            color='LimeGreen', mec='LimeGreen', ms=4, label='Residual')
+            color='LimeGreen', mec='LimeGreen', ms=1, label='Residual')
     w = np.flatnonzero(np.diff(pp.goodpixels) > 1)
     for wj in w:
         a, b = pp.goodpixels[wj: wj + 2]
         ax.axvspan(x[a], x[b], facecolor='lightgray', edgecolor='none')
-        ax.plot(x[a: b + 1], resid[a: b + 1], 'b')
+        ax.plot(x[a: b + 1], resid[a: b + 1], 'b', lw=0.5)
     for k in pp.goodpixels[[0, -1]]:
         ax.plot(x[[k, k]], [mn, pp.bestfit[k]], 'lightgray')
 
@@ -211,12 +211,12 @@ def ppxf_plot(pp, ax=None):
             ymin = min(np.nanmin(
                 pp.galaxy[pp.goodpixels] - sky_spectrum[pp.goodpixels]), np.nanmin(stars_spectrum))
         if pp.gas_any:
-            ax.plot(x, pp.gas_bestfit + mn, c='magenta', linewidth=2, label='Best fit (gas)')
-        ax.plot(x, pp.bestfit, c='orange', linewidth=2, label='Best fit (total)')
-        ax.plot(x, stars_spectrum, 'r', linewidth=2, label='Best fit (stellar)')
+            ax.plot(x, pp.gas_bestfit + mn, c='magenta', linewidth=1, label='Best fit (gas)')
+        ax.plot(x, pp.bestfit, c='orange', linewidth=1, label='Best fit (total)')
+        ax.plot(x, stars_spectrum, 'r', linewidth=1, label='Best fit (stellar)')
 
     else:
-        ax.plot(x, pp.bestfit, 'r', linewidth=2, label='Best fit')
+        ax.plot(x, pp.bestfit, 'r', linewidth=1, label='Best fit')
         ax.plot(x[pp.goodpixels], pp.goodpixels * 0 + mn, '.k', ms=1)
 
     # Axis limits
@@ -232,6 +232,6 @@ def ppxf_plot(pp, ax=None):
                np.nanmax(pp.galaxy[pp.goodpixels]))
     ax.set_ylim([ymin, ymax] + np.array([-0.05, 0.05]) * (ymax - ymin))
 
-    ax.legend(loc='upper left', numpoints=1)
+    ax.legend(loc='upper left', numpoints=1, fontsize=8)
 
 
