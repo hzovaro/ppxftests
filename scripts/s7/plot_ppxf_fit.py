@@ -1,16 +1,19 @@
 import sys, os 
 
+import multiprocessing
 import numpy as np
 from numpy.random import RandomState
 from tqdm import tqdm
 
-from ppxftests.run_ppxf import run_ppxf, ppxf_plot
+from ppxftests.run_ppxf import run_ppxf
+from ppxftests.ppxf_plot import ppxf_plot, plot_sfh_light_weighted
 
 import matplotlib.pyplot as plt
+from matplotlib.lines import Line2D
 plt.ion()   
 plt.close("all")
 
-from settings import CLEAN, fig_path, Aperture, get_aperture_coords, gals_all
+from settings import CLEAN, fig_path, Aperture, gals_all, ages, metallicities, get_aperture_label
 from load_galaxy_spectrum import load_galaxy_spectrum
 
 ###########################################################################
@@ -57,27 +60,29 @@ if len(sys.argv) > 2:
 else:
     gals = gals_all
 
-# x and y coordinates in DataCube corresponding to the chosen aperture
 aperture = Aperture[sys.argv[1]]
-rr, cc = get_aperture_coords(aperture)
 
 ###########################################################################
 # Run ppxf and plot 
 for gal in tqdm(gals):
 
-    # Load the aperture spectrum
-    lambda_vals_obs_A, lambda_vals_rest_A, spec, spec_cont_only, spec_err, norm, bad_pixel_ranges_A =\
-        load_galaxy_spectrum(gal, aperture)
+    # Load spectrum with additional wavelength regions masked
+    lambda_vals_obs_A, lambda_vals_rest_A, spec, spec_cont_only, spec_err, norm, bad_pixel_ranges_masked_A =\
+        load_galaxy_spectrum(gal, aperture, plotit=False)
 
-    # PPXF: MC simulations
-    # Input arguments
+    # Run ppxf niters times w/ random noise    
     seeds = list(np.random.randint(low=0, high=100 * 1, size=1))
-    pp = ppxf_helper([seeds[0], spec_cont_only * norm, spec_err * norm, lambda_vals_rest_A, bad_pixel_ranges_A])
+    pp = ppxf_helper([seeds[0], spec_cont_only * norm, spec_err * norm, lambda_vals_rest_A, bad_pixel_ranges_masked_A])
 
-    # Plot the actual fit.
-    fig, ax = plt.subplots(nrows=1, figsize=(10, 3.375))
+    # Plot the fit 
+    fig, ax = plt.subplots(nrows=1, figsize=(10, 3.333))
     ppxf_plot(pp, ax=ax)
-    ax.set_title(gal + r" (Reduced-$\chi^2 = %.2f$)" % pp.chi2)
-    # For now, saving to the regular directory, not the paper one
+    ax.set_title(f"{gal} - {get_aperture_label(aperture)}")
     if savefigs:
-        plt.gcf().savefig(os.path.join(fig_path, f"{gal}_{aperture.name}.pdf"), format="pdf", bbox_inches="tight")
+        plt.gcf().savefig(os.path.join(fig_path, f"{gal}_MC_fit_example_{aperture.name}.pdf"), format="pdf", bbox_inches="tight")
+
+    # Plot the SFH
+    fig, ax = plt.subplots(nrows=1, figsize=(10, 2.5))
+    plot_sfh_light_weighted(pp.weights_light_weighted, ages, metallicities, ax=ax)
+    if savefigs:
+        plt.gcf().savefig(os.path.join(fig_path, f"{gal}_MC_sfh_example_{aperture.name}.pdf"), format="pdf", bbox_inches="tight")
